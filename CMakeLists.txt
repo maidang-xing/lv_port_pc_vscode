@@ -68,6 +68,18 @@ target_include_directories(lvgl PUBLIC ${PROJECT_SOURCE_DIR} ${SDL2_INCLUDE_DIRS
 set(MAIN_SOURCES src/mouse_cursor_icon.c src/hal/hal.c)
 set(MAIN_LIBS lvgl lvgl::examples lvgl::demos lvgl::thorvg ${SDL2_LIBRARIES})
 
+# Add UI file after setting MAIN_LIBS
+set(UI_SOURCES)  # 创建一个空变量来收集UI源文件
+add_subdirectory(ui_file)
+
+# 将收集到的UI源文件添加到MAIN_SOURCES
+message(STATUS "UI_SOURCES: ${UI_SOURCES}")
+foreach(ui_src ${UI_SOURCES})
+    message(STATUS "Adding UI source: ${ui_src}")
+    list(APPEND MAIN_SOURCES ${ui_src})
+endforeach()
+message(STATUS "MAIN_SOURCES: ${MAIN_SOURCES}")
+
 # Create the main executable, depending on the FreeRTOS option
 if(USE_FREERTOS)
     list(APPEND MAIN_SOURCES src/freertos_main.c src/freertos/freertos_posix_port.c ${FREERTOS_SOURCES})
@@ -120,6 +132,10 @@ endif()
 
 add_executable(main ${MAIN_SOURCES})
 target_compile_definitions(main PRIVATE LV_CONF_INCLUDE_SIMPLE)
+# 设置包含目录，确保可以找到UI头文件
+target_include_directories(main PRIVATE ${CMAKE_SOURCE_DIR}/ui_file ${CMAKE_SOURCE_DIR}/ui_file/display)
+# Link the ui library with the main executable instead of lvgl library
+# list(APPEND MAIN_LIBS ui)  # 已经通过源文件方式集成了UI，不再需要链接ui库
 target_link_libraries(main ${MAIN_LIBS})
 
 # On Windows, GUI applications do not show a console by default,
