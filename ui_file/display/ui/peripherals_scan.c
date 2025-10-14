@@ -1,0 +1,431 @@
+/**
+ * @file peripherals_scan.c
+ * @brief Implements peripheral scanning functionality for IoT device
+ *
+ * This source file provides the implementation of peripheral scanning functionalities
+ * required for an IoT device. It includes functionality for scanning and identifying
+ * connected peripherals, managing device connections, and handling communication
+ * protocols. The implementation supports various peripheral types and ensures
+ * seamless integration with the Tuya IoT platform. This file is essential for developers
+ * working on IoT applications that require peripheral management and integration
+ * with the Tuya IoT ecosystem.
+ *
+ * @copyright Copyright (c) 2021-2025 Tuya Inc. All Rights Reserved.
+ *
+ */
+#include "peripherals_scan.h"
+#include "ai_pocket_pet_app.h"
+#include "toast.h"
+#include "stdio.h"
+// 添加图标声明
+extern const lv_img_dsc_t peripherals_scan_left_icon;
+extern const lv_img_dsc_t peripherals_scan_right_icon;
+/*********************
+ *      DEFINES
+ *********************/
+#define KEY_UP    17  // LV_KEY_UP
+#define KEY_LEFT  20  // LV_KEY_LEFT
+#define KEY_DOWN  18  // LV_KEY_DOWN
+#define KEY_RIGHT 19  // LV_KEY_RIGHT
+#define KEY_ENTER 10  // LV_KEY_ENTER
+#define KEY_ESC   27  // LV_KEY_ESC
+
+typedef struct {
+    lv_obj_t *scan_screen;    // 主屏幕对象
+    lv_obj_t *dev_list;       // 设备列表对象
+    bool is_active;           // 状态标志
+} scan_widget_t;
+
+static scan_widget_t g_scan_widget;
+
+typedef struct {
+    lv_obj_t *wifi_screen;
+    lv_obj_t *ap_list;
+    bool is_active;
+} wifi_widget_t;
+
+static wifi_widget_t g_wifi_widget;
+
+void i2c_scan_hidden(void)
+{
+    scan_widget_t *widget = &g_scan_widget;
+    printf("Hiding scan screen");
+
+    if (widget->is_active) {
+        if (widget->scan_screen) {
+            // 从组中移除对象
+            lv_group_t * g = lv_group_get_default();
+            if(g) {
+                lv_group_remove_obj(widget->scan_screen);
+            }
+
+            // 删除整个扫描屏幕
+            printf("Deleting scan screen");
+            // lv_obj_del_async(widget->scan_screen);
+            lv_obj_del(widget->scan_screen);
+            widget->scan_screen = NULL;
+            widget->dev_list = NULL;
+            widget->is_active = false;
+
+            printf("Scan screen hidden and deleted");
+        }
+    }
+}
+
+/*
+ * Expose scan active state and input handler so the main input dispatcher
+ * can route key presses to the scan screen (same model as keyboard widget).
+ */
+bool i2c_scan_is_active(void)
+{
+    return g_scan_widget.is_active;
+}
+
+// 添加PORT信息结构体
+typedef struct {
+    char port_name[10];
+    int scl;
+    int sda;
+} port_info_t;
+
+// 定义PORT信息数组，包含PORT0、PORT1和PORT2
+static port_info_t port_info[] = {
+    {"PORT0", 0, 1},
+    {"PORT1", 0, 1},
+    {"PORT2", 0, 1}
+};
+
+static int current_port_index = 0; // 当前PORT索引
+
+void i2c_scan_handle_input(uint32_t key)
+{
+    scan_widget_t *widget = &g_scan_widget;
+    if (!widget->is_active) return;
+
+    printf("[Scan] handle_input key=%d", key);
+
+    switch(key) {
+        case KEY_ESC:
+            printf("[Scan] ESC pressed via input handler");
+            i2c_scan_hidden();
+            lv_screen_load(lv_demo_ai_pocket_pet_get_main_screen());
+            break;
+        case KEY_UP:
+            // 向上滚动内容
+            {
+                // widget->dev_list 是 matrix_container
+                if (widget->dev_list) {
+                    lv_obj_t *content_container = lv_obj_get_child(widget->dev_list, 1); // 获取内容容器
+                    // 检查是否已经滚动到顶部
+                    lv_coord_t scroll_top = lv_obj_get_scroll_top(content_container);
+                    if (scroll_top > 0) {
+                        // 限制滚动步长不超过剩余可滚动距离
+                        lv_coord_t scroll_step = (scroll_top > 20) ? 20 : scroll_top;
+                        lv_obj_scroll_by(content_container, 0, scroll_step, LV_ANIM_ON);
+                    }
+                }
+            }
+            break;
+        case KEY_DOWN:
+            // 向下滚动内容
+            {
+                // widget->dev_list 是 matrix_container
+                if (widget->dev_list) {
+                    lv_obj_t *content_container = lv_obj_get_child(widget->dev_list, 1); // 获取内容容器
+                    // 检查是否已经滚动到底部
+                    lv_coord_t scroll_bottom = lv_obj_get_scroll_bottom(content_container);
+                    if (scroll_bottom > 0) {
+                        // 限制滚动步长不超过剩余可滚动距离
+                        lv_coord_t scroll_step = (scroll_bottom > 20) ? 20 : scroll_bottom;
+                        lv_obj_scroll_by(content_container, 0, -scroll_step, LV_ANIM_ON);
+                    }
+                }
+            }
+            break;
+        case KEY_LEFT:
+            // 切换到上一个PORT
+            if (current_port_index > 0) {
+                current_port_index--;
+                // 更新PORT信息显示
+                lv_obj_t *info_bar = lv_obj_get_child(widget->scan_screen, 2); // 获取info_bar对象
+                if (info_bar) {
+                    char port_text[32];
+                    snprintf(port_text, sizeof(port_text), "%s : SCL=%d, SDA=%d",
+                             port_info[current_port_index].port_name,
+                             port_info[current_port_index].scl,
+                             port_info[current_port_index].sda);
+                    lv_label_set_text(info_bar, port_text);
+                }
+            }
+            break;
+        case KEY_RIGHT:
+            // 切换到下一个PORT
+            if (current_port_index < (sizeof(port_info) / sizeof(port_info[0]) - 1)) {
+                current_port_index++;
+                // 更新PORT信息显示
+                lv_obj_t *info_bar = lv_obj_get_child(widget->scan_screen, 2); // 获取info_bar对象
+                if (info_bar) {
+                    char port_text[32];
+                    snprintf(port_text, sizeof(port_text), "%s : SCL=%d, SDA=%d",
+                             port_info[current_port_index].port_name,
+                             port_info[current_port_index].scl,
+                             port_info[current_port_index].sda);
+                    lv_label_set_text(info_bar, port_text);
+                }
+            }
+            break;
+        case KEY_ENTER:
+            // TODO: handle selection if needed
+            break;
+        default:
+            break;
+    }
+}
+
+void i2c_scan_show(void)
+{
+    scan_widget_t *widget = &g_scan_widget;
+
+    // 重置当前PORT索引
+    current_port_index = 0;
+
+    // 如果已经存在，先清理
+    if (widget->is_active) {
+        i2c_scan_hidden();
+    }
+
+    // 创建新的扫描屏幕
+    widget->scan_screen = lv_obj_create(NULL);
+    lv_obj_set_size(widget->scan_screen, AI_PET_SCREEN_WIDTH, AI_PET_SCREEN_HEIGHT);
+    lv_obj_set_style_bg_color(widget->scan_screen, lv_color_white(), 0);
+
+    // 创建标题
+    lv_obj_t *title = lv_label_create(widget->scan_screen);
+    lv_label_set_text(title, "I2C Device Scan Results");
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 5);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(title, lv_color_black(), 0);
+
+    // 创建PORT信息行（放在标题下方）
+    // 左侧图标
+    lv_obj_t *left_icon = lv_img_create(widget->scan_screen);
+    lv_img_set_src(left_icon, &peripherals_scan_left_icon);
+    lv_obj_align(left_icon, LV_ALIGN_TOP_MID, -85, 25);
+    lv_img_set_zoom(left_icon, 200); // 缩小到约78%的大小 (256是原始大小，200/256≈0.78)
+
+    lv_obj_t *info_bar = lv_label_create(widget->scan_screen);
+    char port_text[32];
+    snprintf(port_text, sizeof(port_text), "%s : SCL=%d, SDA=%d",
+             port_info[current_port_index].port_name,
+             port_info[current_port_index].scl,
+             port_info[current_port_index].sda);
+    lv_label_set_text(info_bar, port_text);
+    lv_obj_align(info_bar, LV_ALIGN_TOP_MID, 0, 29);
+    lv_obj_set_style_text_font(info_bar, &lv_font_montserrat_12, 0);
+
+    // 右侧图标
+    lv_obj_t *right_icon = lv_img_create(widget->scan_screen);
+    lv_img_set_src(right_icon, &peripherals_scan_right_icon);
+    lv_obj_align(right_icon, LV_ALIGN_TOP_MID, 85, 25);
+    lv_img_set_zoom(right_icon, 200); // 缩小到约78%的大小 (256是原始大小，200/256≈0.78)
+
+    // 创建矩阵显示I2C地址
+    lv_obj_t *matrix_container = lv_obj_create(widget->scan_screen);
+    widget->dev_list = matrix_container; // 保存引用以供滚动使用
+    lv_obj_set_size(matrix_container, AI_PET_SCREEN_WIDTH - 20, AI_PET_SCREEN_HEIGHT - 50); // 矩阵大小
+    lv_obj_align(matrix_container, LV_ALIGN_CENTER, 0, 20); // 向下移动更多一点
+    lv_obj_set_style_border_color(matrix_container, lv_color_black(), 0);
+    lv_obj_set_style_border_width(matrix_container, 2, 0);
+    lv_obj_set_flex_flow(matrix_container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_gap(matrix_container, 2, 0);
+    lv_obj_clear_flag(matrix_container, LV_OBJ_FLAG_SCROLLABLE); // 禁用容器滚动
+
+    // 创建标题行 (显示0 1 2 3 4 5 6 7 8 9 A B C D E F)
+    lv_obj_t *header_row = lv_obj_create(matrix_container);
+    lv_obj_set_size(header_row, LV_PCT(100), 20);
+    lv_obj_set_flex_flow(header_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_gap(header_row, 1, 0);
+    lv_obj_set_style_pad_all(header_row, 2, 0);
+
+    // 添加空位给左上角
+    lv_obj_t *empty_label = lv_label_create(header_row);
+    lv_label_set_text(empty_label, "");
+    lv_obj_set_width(empty_label, 30);
+
+    // 添加十六进制列标题
+    for (int col = 0; col < 16; col++) {
+        lv_obj_t *label = lv_label_create(header_row);
+        char hex_char[2];
+        if (col < 10) {
+            hex_char[0] = '0' + col;
+        } else {
+            hex_char[0] = 'A' + (col - 10);
+        }
+        hex_char[1] = '\0';
+        lv_label_set_text(label, hex_char);
+        lv_obj_set_width(label, 16);
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_font(label, &lv_font_montserrat_10, 0);  // 使用较小字体
+    }
+
+    // 创建可滚动的内容容器
+    lv_obj_t *content_container = lv_obj_create(matrix_container);
+    lv_obj_set_size(content_container, LV_PCT(100), AI_PET_SCREEN_HEIGHT - 100); // 增加20像素高度
+    lv_obj_set_flex_flow(content_container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_all(content_container, 0, 0);
+    lv_obj_set_style_border_width(content_container, 0, 0);
+    lv_obj_set_scroll_dir(content_container, LV_DIR_VER); // 只允许垂直滚动
+    lv_obj_set_style_pad_gap(content_container, 0, 0);
+
+    // 创建128个地址的矩阵 (0x00 - 0x7F)
+    for (int row = 0; row < 8; row++) {
+        lv_obj_t *row_container = lv_obj_create(content_container);
+        lv_obj_set_size(row_container, LV_PCT(100), 16);  // 减小行高
+        lv_obj_set_flex_flow(row_container, LV_FLEX_FLOW_ROW);
+        lv_obj_set_style_pad_gap(row_container, 1, 0);
+        lv_obj_set_style_pad_all(row_container, 1, 0);  // 减小内边距
+
+        // 添加行标题 (0x 1x 2x ... 7x)
+        lv_obj_t *row_label = lv_label_create(row_container);
+        char row_text[4];
+        snprintf(row_text, sizeof(row_text), "%Xx", row);
+        lv_label_set_text(row_label, row_text);
+        lv_obj_set_width(row_label, 30);  // 增加宽度与空列标题对齐
+        lv_obj_set_style_text_font(row_label, &lv_font_montserrat_10, 0);  // 使用较小字体
+        lv_obj_set_style_text_align(row_label, LV_TEXT_ALIGN_CENTER, 0); // 文本居中对齐
+
+        // 添加该行的16个地址单元格
+        for (int col = 0; col < 16; col++) {
+            lv_obj_t *cell = lv_label_create(row_container);
+            uint8_t addr = (row << 4) | col;
+
+            // 对于有效I2C地址范围显示地址
+            if (addr <= 0x7F) {
+                char addr_text[5];
+                snprintf(addr_text, sizeof(addr_text), "%02X", addr);
+                lv_label_set_text(cell, addr_text);
+            } else {
+                lv_label_set_text(cell, "--");
+            }
+
+            lv_obj_set_width(cell, 16);  // 与列标题宽度一致
+            lv_obj_set_style_text_align(cell, LV_TEXT_ALIGN_CENTER, 0);
+            lv_obj_set_style_radius(cell, 3, 0);
+            lv_obj_set_style_bg_color(cell, lv_color_hex(0xf0f0f0), 0);
+            lv_obj_set_style_bg_opa(cell, LV_OPA_COVER, 0);
+            lv_obj_set_style_text_font(cell, &lv_font_montserrat_10, 0);  // 使用较小字体
+        }
+    }
+
+    // 设置屏幕属性
+    lv_obj_clear_flag(widget->scan_screen, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(widget->scan_screen, LV_OBJ_FLAG_CLICKABLE);
+
+    // 加载屏幕
+    lv_screen_load(widget->scan_screen);
+    widget->is_active = true;
+
+    printf("I2C scan matrix screen created");
+}
+
+void wifi_scan_hidden(void)
+{
+    wifi_widget_t *w = &g_wifi_widget;
+    printf("Hiding wifi scan screen");
+    if (w->is_active) {
+        if (w->wifi_screen) {
+            lv_group_t * g = lv_group_get_default();
+            if (g) {
+                lv_group_remove_obj(w->wifi_screen);
+            }
+            printf("Deleting wifi scan screen");
+            lv_obj_del(w->wifi_screen);
+            w->wifi_screen = NULL;
+            w->ap_list = NULL;
+            w->is_active = false;
+            printf("Wifi scan screen hidden and deleted");
+        }
+    }
+}
+
+void wifi_scan_show(void)
+{
+    wifi_widget_t *w = &g_wifi_widget;
+
+    if (w->is_active) {
+        wifi_scan_hidden();
+    }
+
+    // Create wifi scan screen
+    w->wifi_screen = lv_obj_create(NULL);
+    lv_obj_set_size(w->wifi_screen, AI_PET_SCREEN_WIDTH, AI_PET_SCREEN_HEIGHT);
+    lv_obj_set_style_bg_color(w->wifi_screen, lv_color_white(), 0);
+
+    // AP list
+    w->ap_list = lv_list_create(w->wifi_screen);
+    lv_obj_set_size(w->ap_list, AI_PET_SCREEN_WIDTH - 20, AI_PET_SCREEN_HEIGHT - 60);
+    lv_obj_align(w->ap_list, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_border_color(w->ap_list, lv_color_black(), 0);
+    lv_obj_set_style_border_width(w->ap_list, 2, 0);
+
+    lv_obj_clear_flag(w->wifi_screen, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(w->wifi_screen, LV_OBJ_FLAG_CLICKABLE);
+
+    // Scan APs
+    // AP_IF_S *ap_info = NULL;
+    // uint32_t ap_info_nums = 0;
+    // toast_show("Scanning WiFi APs...", 2000);
+    // tal_wifi_all_ap_scan(&ap_info, &ap_info_nums);
+    // printf("Found %d wifi APs", ap_info_nums);
+    // for (uint32_t i = 0; i < ap_info_nums; i++) {
+    //     char wifi_msg[256];
+    //     snprintf(wifi_msg, sizeof(wifi_msg), "SSID: %s, RSSI: %d dB, channel: %d",
+    //              (const char *)ap_info[i].ssid, ap_info[i].rssi, ap_info[i].channel);
+    //     lv_list_add_btn(w->ap_list, LV_SYMBOL_WIFI, wifi_msg);
+    // }
+
+    // Title
+    lv_obj_t *title = lv_label_create(w->wifi_screen);
+    lv_label_set_text(title, "WiFi Scan Results");
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(title, lv_color_black(), 0);
+
+    // Load screen and focus
+    lv_group_t *grp = lv_group_get_default();
+    if (grp) {
+        lv_group_add_obj(grp, w->wifi_screen);
+        lv_group_focus_obj(w->wifi_screen);
+    }
+    lv_screen_load(w->wifi_screen);
+    w->is_active = true;
+}
+
+bool wifi_scan_is_active(void)
+{
+    return g_wifi_widget.is_active;
+}
+
+void wifi_scan_handle_input(uint32_t key)
+{
+    wifi_widget_t *w = &g_wifi_widget;
+    if (!w->is_active) return;
+
+    switch (key) {
+        case KEY_ESC:
+            wifi_scan_hidden();
+            lv_screen_load(lv_demo_ai_pocket_pet_get_main_screen());
+            break;
+        case KEY_UP:
+            if (w->ap_list) lv_obj_scroll_by(w->ap_list, 0, 30, LV_ANIM_ON);
+            break;
+        case KEY_DOWN:
+            if (w->ap_list) lv_obj_scroll_by(w->ap_list, 0, -30, LV_ANIM_ON);
+            break;
+        case KEY_ENTER:
+            // optional: selection handling
+            break;
+        default:
+            break;
+    }
+}
