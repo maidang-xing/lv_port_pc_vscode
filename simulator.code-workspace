@@ -28,7 +28,8 @@
 			"*.puml": "plantuml",
 			"glob.h": "c",
 			"lvgl.h": "c",
-			"ai_pocket_pet_app.h": "c"
+			"ai_pocket_pet_app.h": "c",
+			"peripherals_scan.h": "c"
 		},
 	},
 	// tasks.json section
