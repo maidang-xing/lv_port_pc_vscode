@@ -29,7 +29,8 @@
 			"glob.h": "c",
 			"lvgl.h": "c",
 			"ai_pocket_pet_app.h": "c",
-			"peripherals_scan.h": "c"
+			"peripherals_scan.h": "c",
+			"dino_game.h": "c"
 		},
 	},
 	// tasks.json section

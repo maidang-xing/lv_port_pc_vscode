@@ -90,9 +90,9 @@ typedef struct {
 
 // 定义PORT信息数组，包含PORT0、PORT1和PORT2
 static port_info_t port_info[] = {
-    {"PORT0", 0, 1},
-    {"PORT1", 0, 1},
-    {"PORT2", 0, 1}
+    {"PORT 0", 0, 1},
+    {"PORT 1", 0, 1},
+    {"PORT 2", 0, 1}
 };
 
 static int current_port_index = 0; // 当前PORT索引

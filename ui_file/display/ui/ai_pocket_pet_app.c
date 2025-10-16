@@ -19,6 +19,7 @@
 #include "peripherals_scan.h"
 #include "toast.h"
 #include "startup_screen.h"
+#include "dino_game.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -129,8 +130,8 @@ void lv_demo_ai_pocket_pet_handle_input(uint32_t key)
         return;
     }
 
-    extern void game_key_input(int key);
-    game_key_input(key);
+    extern void dino_game_key_input(int key);
+    dino_game_key_input(key);
 
     printf("Key pressed: %d (UP:%d LEFT:%d DOWN:%d RIGHT:%d ENTER:%d ESC:%d I:%d)\n",
            key, KEY_UP, KEY_LEFT, KEY_DOWN, KEY_RIGHT, KEY_ENTER, KEY_ESC, KEY_AI);

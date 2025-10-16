@@ -7,11 +7,12 @@
  *      INCLUDES
  *********************/
 #include "menu_system.h"
+#include "dino_game.h"
+#include "peripherals_scan.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
-#include "peripherals_scan.h"
 /*********************
  *      DEFINES
  *********************/
@@ -84,6 +85,9 @@ static void create_stat_display_item(lv_obj_t *parent, const char *label, const 
 static void highlight_first_sub_menu_item(menu_system_data_t *data);
 // static void create_sub_menu_with_items(menu_system_data_t *data, const char *title, const char *symbols[], const char *items[], uint8_t item_count);
 static uint32_t find_action_items_start(void);
+// static void menu_game_stop_and_cleanup(void);
+// static void menu_game_timer_cb(lv_timer_t *tmr);
+// static void menu_game_event_cb(lv_event_t *e);
 static void game_show();
 
 // Forward declaration for functions from main app
@@ -206,6 +210,15 @@ lv_obj_t* menu_system_create_sub_menu(lv_obj_t *parent)
 void menu_system_handle_main_navigation(uint32_t key)
 {
     menu_system_data_t *data = &g_menu_system_data;
+
+    // 如果游戏正在运行，将按键传递给游戏处理
+    // 移除了对g_game_screen的引用，改为检查当前菜单状态
+    // if (data->current_menu == AI_PET_MENU_SCAN &&
+    //     lv_obj_has_flag(data->sub_menu, LV_OBJ_FLAG_HIDDEN) == false) {
+    //     dino_game_key_input(key);
+    //     return;
+    // }
+
     uint8_t old_selection = data->selected_button;
     uint8_t new_selection = old_selection;
 
@@ -234,6 +247,14 @@ void menu_system_handle_main_navigation(uint32_t key)
 void menu_system_handle_sub_navigation(uint32_t key)
 {
     menu_system_data_t *data = &g_menu_system_data;
+
+    // 如果当前在游戏菜单中，将按键传递给游戏处理
+    // if (data->current_menu == AI_PET_MENU_SCAN &&
+    //     lv_obj_has_flag(data->sub_menu, LV_OBJ_FLAG_HIDDEN) == false) {
+    //     dino_game_key_input(key);
+    //     return;
+    // }
+
     uint32_t child_count = lv_obj_get_child_cnt(data->sub_menu_list);
     if(child_count == 0) return;
 
@@ -432,7 +453,7 @@ void menu_system_handle_sub_selection(void)
                 break;
             }
             case 2:
-                game_show();
+                dino_game_show();
                 if (data->pet_event_callback) {
                     // data->pet_event_callback(PET_EVENT_BLE_SCAN, data->pet_event_user_data);
                 }
@@ -971,243 +992,4 @@ static void show_scan_menu(menu_system_data_t *data)
     lv_list_add_btn(data->sub_menu_list, LV_SYMBOL_DUMMY, "Dino Game");
 
     highlight_first_sub_menu_item(data);
-}
-
-// ----------------- Game implementation (file-scope) -----------------
-static lv_obj_t *g_game_screen = NULL;
-static lv_obj_t *g_dino = NULL;
-static lv_obj_t *g_obstacle = NULL;
-static lv_obj_t *g_score_label = NULL;
-static lv_timer_t *g_game_timer = NULL;
-
-typedef struct {
-    int dino_vy;       /* Vertical velocity (negative = up, positive = down) */
-    int dino_y;        /* Vertical position (0 = ground level) */
-    int dino_vx;       /* Horizontal velocity */
-    int on_ground;     /* Boolean: 1 when on ground, 0 when in air */
-    int obstacle_x;    /* Horizontal position of obstacle */
-    int score;         /* Game score */
-    int speed;         /* Game speed */
-    int game_over;     /* Boolean: 1 when game over */
-} menu_game_state_t;
-static menu_game_state_t g_gs;
-
-static void menu_game_stop_and_cleanup(void);
-static void menu_game_timer_cb(lv_timer_t *tmr);
-static void menu_game_event_cb(lv_event_t *e);
-
-void menu_game_start(void)
-{
-    // Cleanup if needed
-    if (g_game_screen) {
-        menu_game_stop_and_cleanup();
-    }
-
-    srand((unsigned)time(NULL));
-
-    // Initialize game state
-    g_gs.dino_vy = 0;      // Start with no vertical velocity
-    g_gs.dino_y = 0;       // Start on ground level
-    g_gs.dino_vx = 0;      // Start with no horizontal velocity
-    g_gs.on_ground = 1;    // Start on ground
-    g_gs.obstacle_x = AI_PET_SCREEN_WIDTH;  // Start obstacle off-screen
-    g_gs.score = 0;        // Start with 0 score
-    g_gs.speed = 10;        // Initial game speed
-    g_gs.game_over = 0;    // Game not over
-
-    // Create screen
-    g_game_screen = lv_obj_create(NULL);
-    lv_obj_set_size(g_game_screen, AI_PET_SCREEN_WIDTH, AI_PET_SCREEN_HEIGHT);
-    lv_obj_set_style_bg_color(g_game_screen, lv_color_white(), 0);
-    lv_obj_set_style_bg_opa(g_game_screen, LV_OPA_COVER, 0);
-
-    // Score
-    g_score_label = lv_label_create(g_game_screen);
-    lv_label_set_text(g_score_label, "SCORE: 0");
-    lv_obj_align(g_score_label, LV_ALIGN_TOP_MID, 0, 6);
-    lv_obj_set_style_text_font(g_score_label, &lv_font_montserrat_14, 0);
-
-    // Ground
-    lv_obj_t *ground = lv_obj_create(g_game_screen);
-    lv_obj_set_size(ground, lv_obj_get_width(g_game_screen), 6);
-    lv_obj_set_style_bg_color(ground, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(ground, LV_OPA_COVER, 0);
-    lv_obj_align(ground, LV_ALIGN_BOTTOM_MID, 0, -30);
-
-    // Create Dino using GIF widget
-    g_dino = lv_gif_create(g_game_screen);
-    lv_gif_set_src(g_dino, &ducky_game);
-    lv_obj_add_flag(g_dino, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_clear_flag(g_dino, LV_OBJ_FLAG_SCROLLABLE);
-
-    /* Set size based on screen height */
-    // lv_coord_t max_height = lv_obj_get_height(g_game_screen) - 50;  /* leave space for ground */
-    lv_coord_t scaled_h = 50;  /* cap at 50px high */
-    lv_coord_t scaled_w = 50;  /* maintain aspect ratio */
-    lv_obj_set_size(g_dino, scaled_w, scaled_h);
-
-    /* Position the dino */
-    lv_obj_set_x(g_dino, 20);
-    lv_obj_set_y(g_dino, lv_obj_get_height(g_game_screen) - 30 - scaled_h);
-
-    // /* Position container */
-    // lv_obj_set_x(g_dino, 20);
-    // lv_obj_set_y(g_dino, lv_obj_get_height(g_game_screen) - 30 - scaled_h);
-
-    // Obstacle
-    g_obstacle = lv_obj_create(g_game_screen);
-    /* Make obstacles proportional to dino size */
-    lv_coord_t obstacle_h = scaled_h * 0.50;  /* 50% of dino height */
-    lv_coord_t obstacle_w = scaled_w * 0.25;  /* 25% of dino width */
-    lv_obj_set_size(g_obstacle, obstacle_w, obstacle_h);
-    lv_obj_set_style_bg_color(g_obstacle, lv_color_black(), 0);
-    lv_obj_set_x(g_obstacle, g_gs.obstacle_x);
-    lv_obj_set_y(g_obstacle, lv_obj_get_height(g_game_screen) - 30 - obstacle_h);
-
-    // Events and group
-    lv_obj_add_event_cb(g_game_screen, menu_game_event_cb, LV_EVENT_ALL, NULL);
-    lv_group_t *grp = lv_group_get_default();
-    if (grp) {
-        lv_group_add_obj(grp, g_game_screen);
-        lv_group_focus_obj(g_game_screen);
-    }
-
-    lv_screen_load(g_game_screen);
-
-    // Start timer
-    g_game_timer = lv_timer_create(menu_game_timer_cb, 20, NULL);
-}
-
-static void menu_game_stop_and_cleanup(void)
-{
-    if (g_game_timer) {
-        lv_timer_del(g_game_timer);
-        g_game_timer = NULL;
-    }
-    if (g_game_screen) {
-        lv_obj_t *main = lv_demo_ai_pocket_pet_get_main_screen();
-        if (main) lv_screen_load(main);
-        lv_obj_del(g_game_screen);
-        g_game_screen = NULL;
-    }
-}
-
-static void menu_game_timer_cb(lv_timer_t *tmr)
-{
-    (void)tmr;
-    if (!g_game_screen || g_gs.game_over) return;
-
-    if (!g_gs.on_ground) {
-        // Positive vy means upward; gravity reduces vy each tick
-        g_gs.dino_vy -= DINO_GRAVITY;
-        g_gs.dino_y += g_gs.dino_vy;
-        // When dino_y drops back to or below 0, we're on the ground
-        if (g_gs.dino_y <= 0) {
-            g_gs.dino_y = 0;
-            g_gs.dino_vy = 0;
-            g_gs.on_ground = 1;
-            // stop horizontal motion on landing
-            // g_gs.dino_vx = 0;
-        }
-        lv_coord_t base_y = lv_obj_get_height(g_game_screen) - 30;
-        lv_obj_set_y(g_dino, base_y - 50 - g_gs.dino_y);
-    }
-
-    // Horizontal position update (allow small forward movement during jump)
-    if (g_gs.dino_vx != 0) {
-        lv_coord_t cur_x = lv_obj_get_x(g_dino);
-        lv_coord_t next_x = cur_x + g_gs.dino_vx;
-        // clamp to screen
-        if (next_x < 0) next_x = 0;
-        if (next_x > (lv_obj_get_width(g_game_screen) - lv_obj_get_width(g_dino)))
-            next_x = lv_obj_get_width(g_game_screen) - lv_obj_get_width(g_dino);
-        lv_obj_set_x(g_dino, next_x);
-    }
-
-    char buf[32];
-    g_gs.obstacle_x -= g_gs.speed;
-    if (g_gs.obstacle_x < -40) {
-        g_gs.obstacle_x = lv_obj_get_width(g_game_screen) + (rand() % 30);
-        g_gs.score += 1;
-        if (g_gs.score % 2 == 0 && g_gs.speed < 30) g_gs.speed += 1;
-
-        snprintf(buf, sizeof(buf), "SCORE: %d", g_gs.score);
-        lv_label_set_text(g_score_label, buf);
-    }
-    lv_obj_set_x(g_obstacle, g_gs.obstacle_x);
-
-    // Collision
-    lv_area_t dino_coords;
-    lv_area_t obs_coords;
-    lv_obj_get_coords(g_dino, &dino_coords);
-    lv_obj_get_coords(g_obstacle, &obs_coords);
-    // Add a small buffer to prevent overly sensitive collision detection
-    const int collision_buffer = 2;
-    if (!(dino_coords.x2 < obs_coords.x1 + collision_buffer ||
-          dino_coords.x1 > obs_coords.x2 - collision_buffer ||
-          dino_coords.y2 < obs_coords.y1 + collision_buffer ||
-          dino_coords.y1 > obs_coords.y2 - collision_buffer)) {
-        printf("dino_x2=%d, obs_x1=%d, dino_x1=%d, obs_x2=%d\n",
-                 dino_coords.x2, obs_coords.x1, dino_coords.x1, obs_coords.x2);
-        printf("dino_y2=%d, obs_y1=%d, dino_y1=%d, obs_y2=%d\n",
-                 dino_coords.y2, obs_coords.y1, dino_coords.y1, obs_coords.y2);
-        g_gs.game_over = 1;
-        snprintf(buf, sizeof(buf), "GAME OVER: %d", g_gs.score);
-        lv_label_set_text(g_score_label, buf);
-        lv_demo_ai_pocket_pet_show_toast("Game Over! Press ESC to exit.", 3000);
-    }
-}
-
-static void menu_game_event_cb(lv_event_t *e)
-{
-    if (!e) return;
-    if (lv_event_get_code(e) == LV_EVENT_KEY) {
-        int key = lv_event_get_key(e);
-        printf("Key: %d\n", key);
-        if (key == KEY_UP) {
-            if (!g_gs.game_over && g_gs.on_ground) {
-                g_gs.dino_vy = DINO_JUMP_VY;
-                g_gs.dino_vx = DINO_HORZ_VX;
-                g_gs.on_ground = 0;
-            }
-        }
-        // Exit game with ESC
-        if (key == KEY_ESC) {
-            menu_game_stop_and_cleanup();
-        }
-    } else if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        // Handle jumping with touch/click
-        if (!g_gs.game_over && g_gs.on_ground) {
-            g_gs.dino_vy = DINO_JUMP_VY;
-            g_gs.dino_vx = DINO_HORZ_VX;
-            g_gs.on_ground = 0;
-        }
-    }
-}
-
-void game_key_input(int key)
-{
-    if (key == KEY_ENTER || key == KEY_UP) {
-        if (!g_gs.game_over && g_gs.on_ground) {
-            g_gs.dino_vy = DINO_JUMP_VY;
-            g_gs.dino_vx = 0;
-            g_gs.on_ground = 0;
-        }
-    } else if (key == KEY_LEFT) {
-        if (!g_gs.game_over && g_gs.dino_vx > 0) {
-            g_gs.dino_vx = -DINO_HORZ_VX;
-        }
-    } else if (key == KEY_RIGHT) {
-        if (!g_gs.game_over && g_gs.dino_vx < 0) {
-            g_gs.dino_vx = DINO_HORZ_VX;
-        }
-    } else if (key == KEY_ESC) {
-        menu_game_stop_and_cleanup();
-    }
-}
-
-void game_show()
-{
-    // File-scope helper-based implementation: start the game.
-    menu_game_start();
 }
