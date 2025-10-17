@@ -1,6 +1,7 @@
 /**
  * @file dino_game.c
  * Dino Game Component for AI Pocket Pet
+ * Optimized for embedded systems with minimal memory footprint
  */
 
 /*********************
@@ -9,14 +10,13 @@
 #include "dino_game.h"
 #include "ai_pocket_pet_app.h"
 #include "stdio.h"
-#include "stdlib.h"
-#include "time.h"
 #include "math.h"
 #include "lvgl.h"
 
 /*********************
  *      DEFINES
  *********************/
+
 // Dino game tuning constants
 #define DINO_JUMP_VY   13  /* positive = upward velocity magnitude (reduced for lower jump) */
 #define DINO_GRAVITY    1  /* per-tick gravity (subtracts from vy) */
@@ -25,6 +25,11 @@
 #define DINO_AIR_CONTROL 0.8f /* air control factor (1.0 = full control, 0.0 = no control) */
 #define DINO_FRICTION   0.85f /* ground friction factor */
 #define HIGH_SCORE      100   /* historical high score */
+
+// Simple LFSR random number generator for embedded systems
+#define LFSR_SEED           0x1234  /* Initial seed for LFSR */
+#define LFSR_POLYNOMIAL     0x8016  /* LFSR polynomial (x^16 + x^14 + x^13 + x^11 + 1) */
+
 LV_IMG_DECLARE(ducky_game); // Declare the GIF image
 /**********************
  *      TYPEDEFS
@@ -44,7 +49,7 @@ typedef struct {
     uint16_t score;          /* Game score (0-65535 should be enough) */
     uint8_t speed;           /* Game speed (0-255, currently capped at 30) */
 
-    // Boolean flags (pack into bit fields to save memory)
+    // Boolean flags (pack into bit fields to save memory) - optimized layout
     uint8_t on_ground : 1;           /* Boolean: 1 when on ground, 0 when in air */
     uint8_t obstacle_type : 1;       /* 0 = ground obstacle, 1 = air obstacle */
     uint8_t game_over : 1;           /* Boolean: 1 when game over */
@@ -54,16 +59,15 @@ typedef struct {
     uint8_t exit_selection : 1;      /* 0 = No, 1 = Yes */
     uint8_t show_game_over_dialog : 1; /* Boolean: 1 when game over dialog is shown */
 
-    // Game over selection (needs 2 bits: 0=Yes, 1=No, but uint8_t for alignment)
-    uint8_t game_over_selection;     /* 0 = Yes (play again), 1 = No (exit) */
+    // Game over selection (pack into single byte with previous flags if possible)
+    uint8_t game_over_selection : 1;     /* 0 = Yes (play again), 1 = No (exit) */
+    uint8_t _reserved : 7;               /* Reserved bits for future use */
 } dino_game_state_t;
 
 /**********************
  *  STATIC PROTOTYPES
  **********************/
 static void dino_game_stop_and_cleanup(void);
-static void dino_game_timer_cb(lv_timer_t *tmr);
-static void dino_game_event_cb(lv_event_t *e);
 static void dino_game_show_exit_dialog(void);
 static void dino_game_hide_exit_dialog(void);
 static void dino_game_update_exit_selection(void);
@@ -71,6 +75,13 @@ static void dino_game_show_game_over_dialog(void);
 static void dino_game_hide_game_over_dialog(void);
 static void dino_game_update_game_over_selection(void);
 static void dino_game_restart(void);
+
+// Embedded-friendly random number generation
+static inline uint16_t dino_game_lfsr_random(void) __attribute__((always_inline));
+
+// Hot path functions optimization
+static void dino_game_timer_cb(lv_timer_t *tmr);
+static void dino_game_event_cb(lv_event_t *e);
 
 /**********************
  *  STATIC VARIABLES
@@ -82,6 +93,17 @@ static lv_obj_t *g_air_obstacle = NULL;
 static lv_obj_t *g_score_label = NULL;
 static lv_timer_t *g_game_timer = NULL;
 static dino_game_state_t g_gs;
+
+// LFSR random number state for embedded systems
+static uint16_t g_lfsr_state = LFSR_SEED;
+
+// Optimization flags to reduce unnecessary redraws
+static struct {
+    uint8_t need_redraw : 1;
+    uint8_t score_changed : 1;
+    uint8_t _reserved : 6;
+} g_dino_flags = {1, 0, 0};
+static uint16_t g_last_score = 0;
 
 // Exit dialog UI elements
 static lv_obj_t *g_exit_dialog = NULL;
@@ -182,7 +204,13 @@ void dino_game_show(void)
     g_game_over_yes_btn = NULL;
     g_game_over_no_btn = NULL;
 
-    srand((unsigned int)time(NULL));
+    // Initialize LFSR with a different seed based on game invocation
+    g_lfsr_state = LFSR_SEED ^ (lv_tick_get() & 0xFFFF);
+
+    // Initialize optimization flags
+    g_dino_flags.need_redraw = 1;
+    g_dino_flags.score_changed = 1;
+    g_last_score = 0;
 
     g_gs.game_over = 0;
     g_gs.on_ground = 1;
@@ -201,9 +229,6 @@ void dino_game_show(void)
     g_gs.exit_selection = 0;  // Default to "No"
     g_gs.show_game_over_dialog = 0;
     g_gs.game_over_selection = 0;  // Default to "Yes" (play again)
-
-    printf("Game initialized: on_ground=%d, dino_vy=%f, dino_y=%f\n",
-           g_gs.on_ground, g_gs.dino_vy, g_gs.dino_y);
 
     g_game_screen = lv_obj_create(NULL);
     lv_obj_set_size(g_game_screen, AI_PET_SCREEN_WIDTH, AI_PET_SCREEN_HEIGHT);
@@ -279,9 +304,6 @@ void dino_game_show(void)
     // Initially hide air obstacle (will be shown based on obstacle_type)
     lv_obj_add_flag(g_air_obstacle, LV_OBJ_FLAG_HIDDEN);
 
-    printf("Obstacle initialized at x=%d (screen_width=%d)\n",
-           g_gs.obstacle_x, lv_obj_get_width(g_game_screen));
-
     // Events and group
     lv_obj_add_event_cb(g_game_screen, dino_game_event_cb, LV_EVENT_KEY, NULL);
     // lv_obj_add_event_cb(g_game_screen, dino_game_event_cb, LV_EVENT_CLICKED, NULL);
@@ -298,7 +320,6 @@ void dino_game_show(void)
 
     // Mark game as fully initialized
     g_gs.initialized = 1;
-    printf("Game fully initialized\n");
 }
 
 static void dino_game_show_exit_dialog(void)
@@ -363,8 +384,6 @@ static void dino_game_show_exit_dialog(void)
     lv_label_set_text(yes_label, "YES");
     lv_obj_center(yes_label);
     lv_obj_set_style_text_color(yes_label, lv_color_black(), 0);  // Black text on white background
-
-    printf("Exit dialog shown\n");
 }
 
 static void dino_game_show_game_over_dialog(void)
@@ -445,8 +464,6 @@ static void dino_game_show_game_over_dialog(void)
     lv_label_set_text(no_label, "NO");
     lv_obj_center(no_label);
     lv_obj_set_style_text_color(no_label, lv_color_black(), 0);  // Black text on white background
-
-    printf("Game over dialog shown\n");
 }
 
 static void dino_game_hide_exit_dialog(void)
@@ -461,8 +478,6 @@ static void dino_game_hide_exit_dialog(void)
 
     g_gs.paused = 0;
     g_gs.show_exit_dialog = 0;
-
-    printf("Exit dialog hidden\n");
 }
 
 static void dino_game_hide_game_over_dialog(void)
@@ -479,8 +494,6 @@ static void dino_game_hide_game_over_dialog(void)
 
     g_gs.paused = 0;
     g_gs.show_game_over_dialog = 0;
-
-    printf("Game over dialog hidden\n");
 }
 
 static void dino_game_update_game_over_selection(void)
@@ -551,8 +564,6 @@ static void dino_game_restart(void)
     // Reset obstacle visibility - start with ground obstacle
     lv_obj_clear_flag(g_obstacle, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(g_air_obstacle, LV_OBJ_FLAG_HIDDEN);
-
-    printf("Game restarted\n");
 }
 
 static void dino_game_update_exit_selection(void)
@@ -594,24 +605,6 @@ static void dino_game_timer_cb(lv_timer_t *tmr)
 {
     (void)tmr;
     if (!g_game_screen || g_gs.game_over || !g_gs.initialized || g_gs.paused) return;
-
-    static int frame_count = 0;
-    static lv_timer_t *last_timer = NULL;
-
-    // Reset frame count when timer changes (new game session)
-    if (last_timer != tmr) {
-        frame_count = 0;
-        last_timer = tmr;
-        printf("Timer reset detected, frame_count reset to 0\n");
-    }
-
-    frame_count++;
-
-    // Debug info for first few frames
-    if (frame_count <= 5) {
-        printf("Frame %d: on_ground=%d, dino_vy=%f, dino_y=%f, dino_vx=%f, dino_x=%f\n",
-               frame_count, g_gs.on_ground, g_gs.dino_vy, g_gs.dino_y, g_gs.dino_vx, g_gs.dino_x);
-    }
 
     // Apply friction to horizontal movement
     if (g_gs.on_ground) {
@@ -680,31 +673,25 @@ static void dino_game_timer_cb(lv_timer_t *tmr)
 
         if (g_gs.obstacle_x < -40) {
             // Reset obstacle and randomly choose next obstacle type
-            g_gs.obstacle_type = rand() % 2;  // 0 = ground, 1 = air
+            g_gs.obstacle_type = dino_game_lfsr_random() % 2;  // 0 = ground, 1 = air
 
             if (g_gs.obstacle_type == 0) {
                 // Next is ground obstacle
-                g_gs.obstacle_x = lv_obj_get_width(g_game_screen) + 50 + (rand() % 100);
+                g_gs.obstacle_x = lv_obj_get_width(g_game_screen) + 50 + (dino_game_lfsr_random() % 100);
                 lv_obj_set_x(g_obstacle, g_gs.obstacle_x);
                 lv_obj_clear_flag(g_obstacle, LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(g_air_obstacle, LV_OBJ_FLAG_HIDDEN);
             } else {
                 // Next is air obstacle
-                g_gs.air_obstacle_x = lv_obj_get_width(g_game_screen) + 50 + (rand() % 100);
+                g_gs.air_obstacle_x = lv_obj_get_width(g_game_screen) + 50 + (dino_game_lfsr_random() % 100);
                 lv_obj_set_x(g_air_obstacle, g_gs.air_obstacle_x);
                 lv_obj_clear_flag(g_air_obstacle, LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(g_obstacle, LV_OBJ_FLAG_HIDDEN);
             }
 
             g_gs.score += 1;
+            g_dino_flags.score_changed = 1;  // Mark score as changed
             if (g_gs.score % 2 == 0 && g_gs.speed < 30) g_gs.speed += 1;
-
-            snprintf(buf, sizeof(buf), "SCORE: %d", g_gs.score);
-            lv_label_set_text(g_score_label, buf);
-
-            printf("New obstacle spawned: type=%s, x=%d\n",
-                   g_gs.obstacle_type ? "air" : "ground",
-                   g_gs.obstacle_type ? g_gs.air_obstacle_x : g_gs.obstacle_x);
         }
     } else {
         // Air obstacle is active
@@ -713,31 +700,25 @@ static void dino_game_timer_cb(lv_timer_t *tmr)
 
         if (g_gs.air_obstacle_x < -40) {
             // Reset obstacle and randomly choose next obstacle type
-            g_gs.obstacle_type = rand() % 2;  // 0 = ground, 1 = air
+            g_gs.obstacle_type = dino_game_lfsr_random() % 2;  // 0 = ground, 1 = air
 
             if (g_gs.obstacle_type == 0) {
                 // Next is ground obstacle
-                g_gs.obstacle_x = lv_obj_get_width(g_game_screen) + 50 + (rand() % 100);
+                g_gs.obstacle_x = lv_obj_get_width(g_game_screen) + 50 + (dino_game_lfsr_random() % 100);
                 lv_obj_set_x(g_obstacle, g_gs.obstacle_x);
                 lv_obj_clear_flag(g_obstacle, LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(g_air_obstacle, LV_OBJ_FLAG_HIDDEN);
             } else {
                 // Next is air obstacle
-                g_gs.air_obstacle_x = lv_obj_get_width(g_game_screen) + 50 + (rand() % 100);
+                g_gs.air_obstacle_x = lv_obj_get_width(g_game_screen) + 50 + (dino_game_lfsr_random() % 100);
                 lv_obj_set_x(g_air_obstacle, g_gs.air_obstacle_x);
                 lv_obj_clear_flag(g_air_obstacle, LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(g_obstacle, LV_OBJ_FLAG_HIDDEN);
             }
 
             g_gs.score += 1;
+            g_dino_flags.score_changed = 1;  // Mark score as changed
             if (g_gs.score % 2 == 0 && g_gs.speed < 30) g_gs.speed += 1;
-
-            snprintf(buf, sizeof(buf), "SCORE: %d", g_gs.score);
-            lv_label_set_text(g_score_label, buf);
-
-            printf("New obstacle spawned: type=%s, x=%d\n",
-                   g_gs.obstacle_type ? "air" : "ground",
-                   g_gs.obstacle_type ? g_gs.air_obstacle_x : g_gs.obstacle_x);
         }
     }
 
@@ -756,16 +737,21 @@ static void dino_game_timer_cb(lv_timer_t *tmr)
           dino_coords.x1 > obs_coords.x2 - collision_buffer ||
           dino_coords.y2 < obs_coords.y1 + collision_buffer ||
           dino_coords.y1 > obs_coords.y2 - collision_buffer)) {
-        printf("Collision with %s obstacle!\n", g_gs.obstacle_type ? "air" : "ground");
-        printf("dino_x2=%d, obs_x1=%d, dino_x1=%d, obs_x2=%d\n",
-                 dino_coords.x2, obs_coords.x1, dino_coords.x1, obs_coords.x2);
-        printf("dino_y2=%d, obs_y1=%d, dino_y1=%d, obs_y2=%d\n",
-                 dino_coords.y2, obs_coords.y1, dino_coords.y1, obs_coords.y2);
         g_gs.game_over = 1;
+        char buf[32];
         snprintf(buf, sizeof(buf), "GAME OVER: %d", g_gs.score);
         lv_label_set_text(g_score_label, buf);
         // Show game over dialog after a short delay
         dino_game_show_game_over_dialog();
+    }
+
+    // Update score display only if it changed
+    if (g_dino_flags.score_changed && g_gs.score != g_last_score) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "SCORE: %d", g_gs.score);
+        lv_label_set_text(g_score_label, buf);
+        g_last_score = g_gs.score;
+        g_dino_flags.score_changed = 0;
     }
 }
 
@@ -835,38 +821,29 @@ static void dino_game_event_cb(lv_event_t *e)
 
     // Ignore events during initialization
     if (!g_gs.initialized) {
-        printf("Event ignored during initialization\n");
         return;
     }
 
     lv_event_code_t code = lv_event_get_code(e);
 
-    printf("Event received: code=%d\n", code);
-
     if (code == LV_EVENT_KEY) {
         int key = lv_event_get_key(e);
-        printf("Key event: %d (ENTER=%d, LEFT=%d, RIGHT=%d, ESC=%d)\n",
-               key, KEY_ENTER, KEY_LEFT, KEY_RIGHT, KEY_ESC);
 
         // Handle exit dialog navigation
         if (g_gs.show_exit_dialog) {
             if (key == KEY_LEFT || key == KEY_RIGHT) {
                 g_gs.exit_selection = 1 - g_gs.exit_selection;  // Toggle between 0 and 1
                 dino_game_update_exit_selection();
-                printf("Exit selection changed to: %s\n", g_gs.exit_selection ? "YES" : "NO");
             }
             else if (key == KEY_ENTER) {
                 if (g_gs.exit_selection == 1) {  // Yes selected
-                    printf("Exit confirmed\n");
                     dino_game_stop_and_cleanup();
                 } else {  // No selected
-                    printf("Exit cancelled\n");
                     dino_game_hide_exit_dialog();
                 }
             }
             else if (key == KEY_ESC) {
                 // ESC while dialog is shown = cancel (same as No)
-                printf("Exit cancelled by ESC\n");
                 dino_game_hide_exit_dialog();
             }
             return;  // Don't process other game keys while dialog is shown
@@ -877,14 +854,11 @@ static void dino_game_event_cb(lv_event_t *e)
             if (key == KEY_LEFT || key == KEY_RIGHT) {
                 g_gs.game_over_selection = 1 - g_gs.game_over_selection;  // Toggle between 0 and 1
                 dino_game_update_game_over_selection();
-                printf("Game over selection changed to: %s\n", g_gs.game_over_selection ? "NO" : "YES");
             }
             else if (key == KEY_ENTER) {
                 if (g_gs.game_over_selection == 0) {  // Yes selected (play again)
-                    printf("Restart game\n");
                     dino_game_restart();
                 } else {  // No selected (exit)
-                    printf("Exit game\n");
                     dino_game_stop_and_cleanup();
                 }
             }
@@ -893,46 +867,39 @@ static void dino_game_event_cb(lv_event_t *e)
 
         // Normal game key handling (when no dialog is shown)
         if (key == KEY_ENTER) {
-            printf("ENTER key detected, game_over=%d, on_ground=%d\n", g_gs.game_over, g_gs.on_ground);
             if (!g_gs.game_over && g_gs.on_ground) {
-                printf("Jump triggered by KEY_ENTER\n");
                 g_gs.dino_vy = DINO_JUMP_VY;
                 g_gs.on_ground = 0;
             }
         }
         else if (key == KEY_LEFT) {
             if (!g_gs.game_over) {
-                printf("LEFT key: applying leftward velocity\n");
                 // Apply immediate leftward velocity
                 g_gs.dino_vx -= DINO_MOVE_SPEED;
             }
         }
         else if (key == KEY_RIGHT) {
             if (!g_gs.game_over) {
-                printf("RIGHT key: applying rightward velocity\n");
                 // Apply immediate rightward velocity
                 g_gs.dino_vx += DINO_MOVE_SPEED;
             }
         }
         // Show exit confirmation dialog when ESC is pressed
         else if (key == KEY_ESC) {
-            printf("ESC key: showing exit dialog\n");
             dino_game_show_exit_dialog();
         }
-        else {
-            printf("Unknown key: %d\n", key);
-        }
     }
-    // else if (code == LV_EVENT_CLICKED) {
-    //     printf("Click event detected, game_over=%d, on_ground=%d\n", g_gs.game_over, g_gs.on_ground);
-    //     // Handle jumping with touch/click
-    //     if (!g_gs.game_over && g_gs.on_ground) {
-    //         printf("Jump triggered by CLICK\n");
-    //         g_gs.dino_vy = DINO_JUMP_VY;
-    //         g_gs.on_ground = 0;
-    //     }
-    // }
-    else {
-        printf("Other event: code=%d\n", code);
-    }
+}
+
+/**
+ * @brief Simple LFSR (Linear Feedback Shift Register) random number generator
+ * Optimized for embedded systems - no dependencies on standard library
+ * @return 16-bit pseudo-random number
+ */
+static inline uint16_t dino_game_lfsr_random(void)
+{
+    uint8_t bit = ((g_lfsr_state >> 0) ^ (g_lfsr_state >> 2) ^
+                   (g_lfsr_state >> 3) ^ (g_lfsr_state >> 5)) & 1;
+    g_lfsr_state = (g_lfsr_state >> 1) | (bit << 15);
+    return g_lfsr_state;
 }

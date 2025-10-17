@@ -8,6 +8,7 @@
  *********************/
 #include "menu_system.h"
 #include "dino_game.h"
+#include "snake_game.h"
 #include "peripherals_scan.h"
 #include <stdio.h>
 #include <string.h>
@@ -304,8 +305,7 @@ void menu_system_handle_main_selection(void)
         case 5: // Video
             show_video_menu(data);
             break;
-
-        case 6: // Scan (not implemented)
+        case 6: // Scan (includes games)
             show_scan_menu(data);
             break;
     }
@@ -457,6 +457,10 @@ void menu_system_handle_sub_selection(void)
                 if (data->pet_event_callback) {
                     // data->pet_event_callback(PET_EVENT_BLE_SCAN, data->pet_event_user_data);
                 }
+                // return_to_main_menu = 1;
+                break;
+            case 3:
+                snake_game_show();
                 // return_to_main_menu = 1;
                 break;
         }
@@ -986,10 +990,11 @@ static void show_scan_menu(menu_system_data_t *data)
     // Clear existing items
     lv_obj_clean(data->sub_menu_list);
 
-    // Add health menu items
-    lv_list_add_btn(data->sub_menu_list, LV_SYMBOL_DUMMY, "WIFI scan demo");
-    lv_list_add_btn(data->sub_menu_list, LV_SYMBOL_DUMMY, "I2C device scan demo");
-    lv_list_add_btn(data->sub_menu_list, LV_SYMBOL_DUMMY, "Dino Game");
+    // Add demo items
+    lv_list_add_btn(data->sub_menu_list, LV_SYMBOL_WIFI, "WIFI scan demo");
+    lv_list_add_btn(data->sub_menu_list, LV_SYMBOL_SETTINGS, "I2C device scan demo");
+    lv_list_add_btn(data->sub_menu_list, LV_SYMBOL_PLAY, "Dino Game");
+    lv_list_add_btn(data->sub_menu_list, LV_SYMBOL_SHUFFLE, "Snake Game");
 
     highlight_first_sub_menu_item(data);
 }

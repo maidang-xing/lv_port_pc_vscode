@@ -29,12 +29,12 @@ extern "C" {
 #endif
 
 // LVGL key codes
-#define KEY_UP    17 
-#define KEY_LEFT  20 
-#define KEY_DOWN  18 
-#define KEY_RIGHT 19 
-#define KEY_ENTER 10 
-#define KEY_ESC   27 
+#define KEY_UP    17
+#define KEY_LEFT  20
+#define KEY_DOWN  18
+#define KEY_RIGHT 19
+#define KEY_ENTER 10
+#define KEY_ESC   27
 #define KEY_AI    105
 
 /**********************
