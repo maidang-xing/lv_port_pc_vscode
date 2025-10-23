@@ -322,6 +322,11 @@ void dino_game_show(void)
     g_gs.initialized = 1;
 }
 
+int dino_game_is_active(void)
+{
+    return g_game_screen != NULL ? 1 : 0;
+}
+
 static void dino_game_show_exit_dialog(void)
 {
     if (g_exit_dialog) return;  // Already shown
@@ -662,8 +667,6 @@ static void dino_game_timer_cb(lv_timer_t *tmr)
 
     // Update dino horizontal visual position
     lv_obj_set_x(g_dino, (lv_coord_t)g_gs.dino_x);
-
-    char buf[32];
 
     // Handle obstacle movement based on current obstacle type
     if (g_gs.obstacle_type == 0) {

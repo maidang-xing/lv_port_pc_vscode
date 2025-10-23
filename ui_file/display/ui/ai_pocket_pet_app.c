@@ -9,7 +9,6 @@
 /*********************
  *      INCLUDES
  *********************/
-// #include "tal_api.h"
 
 #include "ai_pocket_pet_app.h"
 #include "status_bar.h"
@@ -20,11 +19,15 @@
 #include "toast.h"
 #include "startup_screen.h"
 #include "dino_game.h"
+#include "level_indicator.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-
+#ifndef LVGL_SIMULATOR
+#include "tal_api.h"
+#include "lv_port_indev.h"
+#endif
 /*********************
  *      DEFINES
  *********************/
@@ -49,7 +52,9 @@ typedef struct {
  **********************/
 static void init_app_data(void);
 static void create_main_screen(void);
+#if LVGL_SIMULATOR
 static void keyboard_event_cb(lv_event_t *e);
+#endif
 static void handle_main_menu_navigation(uint32_t key);
 static void handle_sub_menu_navigation(uint32_t key);
 static void handle_menu_selection(void);
@@ -114,24 +119,63 @@ void lv_demo_ai_pocket_pet(void)
 
 void lv_demo_ai_pocket_pet_handle_input(uint32_t key)
 {
+    printf("=== Input Handler: Key %d pressed ===\n", key);
+
     // If a modal input UI (keyboard / scan) is active prefer routing to it first
-    if (keyboard_is_active()) {
+    bool keyboard_active = keyboard_is_active();
+    printf("keyboard_is_active(): %d\n", keyboard_active);
+    if (keyboard_active) {
         keyboard_handle_input(key);
         return;
     }
+
     // Route to scan UI if active (scan behaves like keyboard widget)
-    if (i2c_scan_is_active()) {
+    bool i2c_active = i2c_scan_is_active();
+    printf("i2c_scan_is_active(): %d\n", i2c_active);
+    if (i2c_active) {
         i2c_scan_handle_input(key);
         return;
     }
+
     // Route to wifi scan UI if active
-    if (wifi_scan_is_active()) {
+    bool wifi_active = wifi_scan_is_active();
+    printf("wifi_scan_is_active(): %d\n", wifi_active);
+    if (wifi_active) {
         wifi_scan_handle_input(key);
         return;
     }
 
+    // Route to level indicator if active
+    bool level_active = level_indicator_is_active();
+    printf("level_indicator_is_active(): %d\n", level_active);
+    if (level_active) {
+        printf("Routing key %d to level_indicator\n", key);
+        level_indicator_key_input(key);
+        return;
+    }
+
+    // Check if games are active and route input accordingly
+    extern int dino_game_is_active(void);
+    extern int snake_game_is_active(void);
     extern void dino_game_key_input(int key);
-    dino_game_key_input(key);
+    extern void snake_game_key_input(int key);
+
+    int dino_active = dino_game_is_active();
+    int snake_active = snake_game_is_active();
+    
+    printf("dino_game_is_active(): %d, snake_game_is_active(): %d\n", dino_active, snake_active);
+    
+    if (dino_active) {
+        printf("Routing key %d to dino_game\n", key);
+        dino_game_key_input(key);
+        return;  // Don't process menu input when game is active
+    }
+    
+    if (snake_active) {
+        printf("Routing key %d to snake_game\n", key);
+        snake_game_key_input(key);
+        return;  // Don't process menu input when game is active
+    }
 
     printf("Key pressed: %d (UP:%d LEFT:%d DOWN:%d RIGHT:%d ENTER:%d ESC:%d I:%d)\n",
            key, KEY_UP, KEY_LEFT, KEY_DOWN, KEY_RIGHT, KEY_ENTER, KEY_ESC, KEY_AI);
@@ -373,7 +417,6 @@ static void init_app_data(void)
 {
     memset(&g_app_data, 0, sizeof(ai_pet_app_t));
 }
-// #include "lv_port_indev.h"
 
 /**
  * Creates and configures the main screen
@@ -387,8 +430,9 @@ static void create_main_screen(void)
     // Note: We don't load this screen immediately - it will be loaded by the timer
 
     // // Add keyboard event handler to the screen
+#if LVGL_SIMULATOR
     lv_obj_add_event_cb(g_app_data.screen, keyboard_event_cb, LV_EVENT_KEY, NULL);
-
+#endif
     // Make sure the screen can receive keyboard focus
     lv_group_add_obj(lv_group_get_default(), g_app_data.screen);
 
@@ -405,6 +449,7 @@ static void create_main_screen(void)
 /**
  * Keyboard event handler
  */
+#if LVGL_SIMULATOR
 static void keyboard_event_cb(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);  // 获取事件类型
@@ -414,7 +459,7 @@ static void keyboard_event_cb(lv_event_t *e)
     printf("Keyboard event received: key=%d\n", key);
     lv_demo_ai_pocket_pet_handle_input(key);
 }
-
+#endif
 /**
  * Handles main menu navigation (up/down/left/right)
  */

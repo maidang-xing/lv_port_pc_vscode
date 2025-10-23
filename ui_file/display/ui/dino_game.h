@@ -33,6 +33,12 @@ extern "C" {
 void dino_game_show(void);
 
 /**
+ * Check if dino game is currently active
+ * @return 1 if game is active, 0 otherwise
+ */
+int dino_game_is_active(void);
+
+/**
  * Handle key input for the dino game
  * @param key The key code to handle
  */

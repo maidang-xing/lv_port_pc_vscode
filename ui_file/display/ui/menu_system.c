@@ -9,6 +9,7 @@
 #include "menu_system.h"
 #include "dino_game.h"
 #include "snake_game.h"
+#include "level_indicator.h"
 #include "peripherals_scan.h"
 #include <stdio.h>
 #include <string.h>
@@ -89,7 +90,6 @@ static uint32_t find_action_items_start(void);
 // static void menu_game_stop_and_cleanup(void);
 // static void menu_game_timer_cb(lv_timer_t *tmr);
 // static void menu_game_event_cb(lv_event_t *e);
-static void game_show();
 
 // Forward declaration for functions from main app
 extern void lv_demo_ai_pocket_pet_show_toast(const char *message, uint32_t delay_ms);
@@ -445,7 +445,7 @@ void menu_system_handle_sub_selection(void)
                 break;
             case 1: {
                 // lv_demo_ai_pocket_pet_show_toast("I2C Scan: Not implemented", 1000);
-                i2c_scan_show();
+                i2c_scan_show(0);
                 if (data->pet_event_callback) {
                     // data->pet_event_callback(PET_EVENT_I2C_SCAN, data->pet_event_user_data);
                 }
@@ -461,6 +461,10 @@ void menu_system_handle_sub_selection(void)
                 break;
             case 3:
                 snake_game_show();
+                // return_to_main_menu = 1;
+                break;
+            case 4:
+                level_indicator_show();
                 // return_to_main_menu = 1;
                 break;
         }
@@ -995,6 +999,7 @@ static void show_scan_menu(menu_system_data_t *data)
     lv_list_add_btn(data->sub_menu_list, LV_SYMBOL_SETTINGS, "I2C device scan demo");
     lv_list_add_btn(data->sub_menu_list, LV_SYMBOL_PLAY, "Dino Game");
     lv_list_add_btn(data->sub_menu_list, LV_SYMBOL_SHUFFLE, "Snake Game");
+    lv_list_add_btn(data->sub_menu_list, LV_SYMBOL_EYE_OPEN, "Level Indicator");
 
     highlight_first_sub_menu_item(data);
 }

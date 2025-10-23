@@ -17,9 +17,16 @@
 #include "ai_pocket_pet_app.h"
 #include "toast.h"
 #include "stdio.h"
-// 添加图标声明
-extern const lv_img_dsc_t peripherals_scan_left_icon;
-extern const lv_img_dsc_t peripherals_scan_right_icon;
+#ifndef LVGL_SIMULATOR
+#include "tuya_cloud_types.h"
+#include "tal_api.h"
+#include "tkl_pinmux.h"
+#include "tkl_i2c.h"
+#include "tal_wifi.h"
+#endif
+
+LV_IMG_DECLARE(peripherals_scan_left_icon);
+LV_IMG_DECLARE(peripherals_scan_right_icon);
 /*********************
  *      DEFINES
  *********************/
@@ -90,9 +97,9 @@ typedef struct {
 
 // 定义PORT信息数组，包含PORT0、PORT1和PORT2
 static port_info_t port_info[] = {
-    {"PORT 0", 0, 1},
-    {"PORT 1", 0, 1},
-    {"PORT 2", 0, 1}
+    {"PORT 0", 20, 21},
+    {"PORT 1", 4, 5},
+    {"PORT 2", 6, 7}
 };
 
 static int current_port_index = 0; // 当前PORT索引
@@ -155,6 +162,18 @@ void i2c_scan_handle_input(uint32_t key)
                              port_info[current_port_index].scl,
                              port_info[current_port_index].sda);
                     lv_label_set_text(info_bar, port_text);
+#ifndef LVGL_SIMULATOR
+                    printf("[Scan] Current PORT: %d", current_port_index);
+                    tkl_io_pinmux_config(port_info[current_port_index].scl, current_port_index*2);
+                    tkl_io_pinmux_config(port_info[current_port_index].sda, current_port_index*2+1);
+                    TUYA_IIC_BASE_CFG_T cfg;
+                    cfg.role = TUYA_IIC_MODE_MASTER;
+                    cfg.speed = TUYA_IIC_BUS_SPEED_100K;
+                    cfg.addr_width = TUYA_IIC_ADDRESS_7BIT;
+
+                    tkl_i2c_init(current_port_index, &cfg);
+                    i2c_scan_show(current_port_index);
+#endif
                 }
             }
             break;
@@ -171,6 +190,17 @@ void i2c_scan_handle_input(uint32_t key)
                              port_info[current_port_index].scl,
                              port_info[current_port_index].sda);
                     lv_label_set_text(info_bar, port_text);
+#ifndef LVGL_SIMULATOR
+                    tkl_io_pinmux_config(port_info[current_port_index].scl, current_port_index*2);
+                    tkl_io_pinmux_config(port_info[current_port_index].sda, current_port_index*2+1);
+                    TUYA_IIC_BASE_CFG_T cfg;
+                    cfg.role = TUYA_IIC_MODE_MASTER;
+                    cfg.speed = TUYA_IIC_BUS_SPEED_100K;
+                    cfg.addr_width = TUYA_IIC_ADDRESS_7BIT;
+
+                    tkl_i2c_init(current_port_index, &cfg);
+                    i2c_scan_show(current_port_index);
+#endif
                 }
             }
             break;
@@ -182,12 +212,19 @@ void i2c_scan_handle_input(uint32_t key)
     }
 }
 
-void i2c_scan_show(void)
+void i2c_scan_show(uint8_t i2c_port)
 {
+#ifndef LVGL_SIMULATOR
+    if (i2c_port >= TUYA_I2C_NUM_MAX) {
+        printf("[ERROR] Invalid I2C port number: %d", i2c_port);
+        return;
+    }
+#endif
     scan_widget_t *widget = &g_scan_widget;
 
-    // 重置当前PORT索引
-    current_port_index = 0;
+    // 设置当前PORT索引为传入的端口号
+    current_port_index = i2c_port;
+    uint8_t dev_num = 0;
 
     // 如果已经存在，先清理
     if (widget->is_active) {
@@ -222,6 +259,9 @@ void i2c_scan_show(void)
     lv_label_set_text(info_bar, port_text);
     lv_obj_align(info_bar, LV_ALIGN_TOP_MID, 0, 29);
     lv_obj_set_style_text_font(info_bar, &lv_font_montserrat_12, 0);
+
+    printf("[Scan] Displaying PORT %d: SCL=%d, SDA=%d", current_port_index,
+           port_info[current_port_index].scl, port_info[current_port_index].sda);
 
     // 右侧图标
     lv_obj_t *right_icon = lv_img_create(widget->scan_screen);
@@ -296,9 +336,9 @@ void i2c_scan_show(void)
 
         // 添加该行的16个地址单元格
         for (int col = 0; col < 16; col++) {
-            lv_obj_t *cell = lv_label_create(row_container);
             uint8_t addr = (row << 4) | col;
-
+            lv_obj_t *cell = lv_label_create(row_container);
+#if LVGL_SIMULATOR
             // 对于有效I2C地址范围显示地址
             if (addr <= 0x7F) {
                 char addr_text[5];
@@ -314,6 +354,44 @@ void i2c_scan_show(void)
             lv_obj_set_style_bg_color(cell, lv_color_hex(0xf0f0f0), 0);
             lv_obj_set_style_bg_opa(cell, LV_OPA_COVER, 0);
             lv_obj_set_style_text_font(cell, &lv_font_montserrat_10, 0);  // 使用较小字体
+#else
+            uint8_t i2c_addr = addr;
+
+            uint8_t data_buf[1] = {0};
+            if (OPRT_OK == tkl_i2c_master_send(i2c_port, i2c_addr, data_buf, 0, TRUE)) {
+                dev_num++;
+                if (dev_num >= i2c_addr) {
+                    lv_label_set_text(cell, "");
+                    continue;
+                }
+                if (i2c_addr <= 0x7F) {
+                    char addr_text[5];
+                    snprintf(addr_text, sizeof(addr_text), "%02X", i2c_addr);
+                    PR_DEBUG("Found I2C device at address %s", addr_text);
+                    lv_label_set_text(cell, addr_text);
+                }
+                else {
+                    lv_label_set_text(cell, "");
+                }
+
+                lv_obj_set_width(cell, 16);  // 与列标题宽度一致
+                lv_obj_set_style_text_align(cell, LV_TEXT_ALIGN_CENTER, 0);
+                lv_obj_set_style_radius(cell, 3, 0);
+                lv_obj_set_style_bg_color(cell, lv_color_white(), 0);
+                lv_obj_set_style_bg_opa(cell, LV_OPA_COVER, 0);
+                lv_obj_set_style_text_font(cell, &lv_font_montserrat_10, 0);  // 使用较小字体
+            }
+            else
+            {
+                lv_label_set_text(cell, "");
+                lv_obj_set_width(cell, 16);  // 与列标题宽度一致
+                lv_obj_set_style_text_align(cell, LV_TEXT_ALIGN_CENTER, 0);
+                lv_obj_set_style_radius(cell, 3, 0);
+                lv_obj_set_style_bg_color(cell, lv_color_white(), 0);
+                lv_obj_set_style_bg_opa(cell, LV_OPA_COVER, 0);
+                lv_obj_set_style_text_font(cell, &lv_font_montserrat_10, 0);  // 使用较小字体
+            }
+#endif
         }
     }
 
@@ -371,19 +449,21 @@ void wifi_scan_show(void)
     lv_obj_clear_flag(w->wifi_screen, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(w->wifi_screen, LV_OBJ_FLAG_CLICKABLE);
 
+#if LVGL_SIMULATOR
+#else
     // Scan APs
-    // AP_IF_S *ap_info = NULL;
-    // uint32_t ap_info_nums = 0;
-    // toast_show("Scanning WiFi APs...", 2000);
-    // tal_wifi_all_ap_scan(&ap_info, &ap_info_nums);
-    // printf("Found %d wifi APs", ap_info_nums);
-    // for (uint32_t i = 0; i < ap_info_nums; i++) {
-    //     char wifi_msg[256];
-    //     snprintf(wifi_msg, sizeof(wifi_msg), "SSID: %s, RSSI: %d dB, channel: %d",
-    //              (const char *)ap_info[i].ssid, ap_info[i].rssi, ap_info[i].channel);
-    //     lv_list_add_btn(w->ap_list, LV_SYMBOL_WIFI, wifi_msg);
-    // }
-
+    AP_IF_S *ap_info = NULL;
+    uint32_t ap_info_nums = 0;
+    toast_show("Scanning WiFi APs...", 2000);
+    tal_wifi_all_ap_scan(&ap_info, &ap_info_nums);
+    printf("Found %d wifi APs", ap_info_nums);
+    for (uint32_t i = 0; i < ap_info_nums; i++) {
+        char wifi_msg[256];
+        snprintf(wifi_msg, sizeof(wifi_msg), "SSID: %s, RSSI: %d dB, channel: %d",
+                 (const char *)ap_info[i].ssid, ap_info[i].rssi, ap_info[i].channel);
+        lv_list_add_btn(w->ap_list, LV_SYMBOL_WIFI, wifi_msg);
+    }
+#endif
     // Title
     lv_obj_t *title = lv_label_create(w->wifi_screen);
     lv_label_set_text(title, "WiFi Scan Results");

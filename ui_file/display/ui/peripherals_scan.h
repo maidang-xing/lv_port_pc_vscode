@@ -15,8 +15,6 @@
 #ifndef __PERIPHERALS_SCAN_H__
 #define __PERIPHERALS_SCAN_H__
 
-// #include "tuya_cloud_types.h"
-// #include "tal_api.h"
 #include "lvgl.h"
 
 #ifdef __cplusplus
@@ -30,7 +28,7 @@ extern "C" {
 /**
  * @brief Show I2C device scan results
  */
-void i2c_scan_show(void);
+void i2c_scan_show(uint8_t i2c_port);
 
 /**
  * @brief Hide I2C device scan results

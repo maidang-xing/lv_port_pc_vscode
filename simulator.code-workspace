@@ -30,7 +30,9 @@
 			"lvgl.h": "c",
 			"ai_pocket_pet_app.h": "c",
 			"peripherals_scan.h": "c",
-			"dino_game.h": "c"
+			"dino_game.h": "c",
+			"stdlib.h": "c",
+			"string.h": "c"
 		},
 	},
 	// tasks.json section

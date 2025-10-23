@@ -91,7 +91,6 @@ static void snake_game_draw_food(void);
 static uint8_t snake_game_check_collision(void);
 static uint8_t snake_game_check_food_collision(void);
 static void snake_game_move_snake(void);
-static void snake_game_draw_grid(void);
 
 // Embedded-friendly random number generation
 static inline uint16_t snake_game_lfsr_random(void) __attribute__((always_inline));
@@ -253,6 +252,11 @@ void snake_game_show(void)
 
     // Mark game as fully initialized
     g_gs.initialized = 1;
+}
+
+int snake_game_is_active(void)
+{
+    return g_game_screen != NULL ? 1 : 0;
 }
 
 void snake_game_key_input(int key)
@@ -514,13 +518,6 @@ static void snake_game_generate_food(void)
             }
         }
     } while (!valid_position);
-}
-
-static void snake_game_draw_grid(void)
-{
-    // Don't create individual objects for grid cells to save memory
-    // Just use the canvas background color and border for visual effect
-    // The snake and food objects will provide the visual game elements
 }
 
 static void snake_game_draw_snake(void)
@@ -902,6 +899,3 @@ static inline uint8_t snake_game_is_valid_position(uint8_t x, uint8_t y)
 {
     return (x < SNAKE_GRID_WIDTH && y < SNAKE_GRID_HEIGHT);
 }
-
-// Forward declaration for external function
-extern lv_obj_t* lv_demo_ai_pocket_pet_get_main_screen(void);

@@ -33,6 +33,13 @@
 void snake_game_show(void);
 
 /**
+ * @brief 检查贪吃蛇游戏是否激活
+ * @param 无
+ * @return 1 如果游戏激活，0 否则
+ */
+int snake_game_is_active(void);
+
+/**
  * @brief 处理游戏键盘输入
  * @param key 按下的键值
  * @return 无
