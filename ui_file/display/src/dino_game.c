@@ -177,11 +177,11 @@ static void dino_game_stop_and_cleanup(void)
 }
 
 /**
- * @brief 显示并启动恐龙游戏
- * @param 无
- * @return 无
+ * @brief Show and start the Dino game
+ * @param None
+ * @return None
  *
- * 创建游戏界面并启动游戏循环
+ * Creates the game UI and starts the game loop
  */
 void dino_game_show(void)
 {
@@ -759,11 +759,11 @@ static void dino_game_timer_cb(lv_timer_t *tmr)
 }
 
 /**
- * @brief 处理游戏键盘输入
- * @param key 按下的键值
- * @return 无
+ * @brief Handle game keyboard input
+ * @param key Pressed key value
+ * @return None
  *
- * 处理游戏中的按键输入事件
+ * Processes key input events within the game
  */
 void dino_game_key_input(int key)
 {

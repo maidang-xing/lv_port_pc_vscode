@@ -9,6 +9,7 @@
 #include "app_display.h"
 #include "lvgl.h"
 #include "lvgl/demos/lv_demos.h"
+#include "ui/screen_manager.h"
 /*********************
  *      DEFINES
  *********************/
@@ -39,9 +40,7 @@
  */
 void app_display_init(void)
 {
-    lv_demo_ai_pocket_pet();
-    // 在这里添加显示初始化代码
-    // 例如创建主屏幕、初始化各种UI组件等
+    screens_init();
 }
 
 /**********************

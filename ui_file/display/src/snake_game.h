@@ -24,27 +24,27 @@
  **********************/
 
 /**
- * @brief 显示并启动贪吃蛇游戏
- * @param 无
- * @return 无
+ * @brief Show and start the Snake game
+ * @param None
+ * @return None
  *
- * 创建游戏界面并启动游戏循环
+ * Create the game UI and start the game loop
  */
 void snake_game_show(void);
 
 /**
- * @brief 检查贪吃蛇游戏是否激活
- * @param 无
- * @return 1 如果游戏激活，0 否则
+ * @brief Check if the Snake game is active
+ * @param None
+ * @return 1 if the game is active, 0 otherwise
  */
 int snake_game_is_active(void);
 
 /**
- * @brief 处理游戏键盘输入
- * @param key 按下的键值
- * @return 无
+ * @brief Handle keyboard input for the game
+ * @param key The key code pressed
+ * @return None
  *
- * 处理游戏中的按键输入事件
+ * Handle key input events for the game
  */
 void snake_game_key_input(int key);
 

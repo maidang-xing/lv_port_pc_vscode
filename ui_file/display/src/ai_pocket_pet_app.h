@@ -15,7 +15,7 @@ extern "C" {
  *********************/
 #include "../lvgl/lvgl.h"
 
-#define LVGL_SIMULATOR 1
+// #define LVGL_SIMULATOR 1
 #include "status_bar.h"
 #include "toast.h"
 /*********************

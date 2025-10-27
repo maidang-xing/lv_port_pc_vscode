@@ -32,7 +32,10 @@
 			"peripherals_scan.h": "c",
 			"dino_game.h": "c",
 			"stdlib.h": "c",
-			"string.h": "c"
+			"string.h": "c",
+			"toast_screen.h": "c",
+			"main_screen.h": "c",
+			"screen_manager.h": "c"
 		},
 	},
 	// tasks.json section
