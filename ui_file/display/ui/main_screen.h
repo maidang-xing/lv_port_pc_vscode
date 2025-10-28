@@ -55,15 +55,6 @@ typedef enum {
     AI_PET_MENU_SLEEP
 } ai_pet_menu_t;
 
-typedef struct {
-    uint8_t health;    // 0-100
-    uint8_t hungry;    // 0-100
-    uint8_t happy;     // 0-100
-    uint16_t age_days; // Age in days
-    float weight_kg;   // Weight in kg (decimal)
-    char name[16];     // Pet name
-} ai_pet_stats_t;
-
 typedef enum {
     PET_EVENT_FEED_HAMBURGER,
     PET_EVENT_DRINK_WATER,
@@ -83,6 +74,20 @@ typedef enum {
     PET_STAT_RANDOMIZE,
     PET_EVENT_MAX
 } pet_event_type_t;
+
+// Pet event callback function type
+typedef void (*pet_event_callback_t)(pet_event_type_t event_type, void *user_data);
+
+typedef struct {
+    uint8_t health;    // 0-100
+    uint8_t hungry;    // 0-100
+    uint8_t clean;     // 0-100
+    uint8_t happy;     // 0-100
+    uint16_t age_days; // Age in days
+    float weight_kg;   // Weight in kg (decimal)
+    char name[16];     // Pet name
+} pet_stats_t;
+
 /**********************************************************/
 extern Screen_t main_screen;
 
@@ -94,6 +99,38 @@ void simple_demo_set_cellular_status(uint8_t strength, bool connected);
 void simple_demo_set_battery_status(uint8_t level, bool charging);
 
 void simple_pet_area_set_animation(ai_pet_state_t state);
+
+/**
+ * Register callback function for pet events
+ * @param callback Function to call when pet events occur
+ * @param user_data User data to pass to the callback
+ */
+void main_screen_register_pet_event_callback(pet_event_callback_t callback, void *user_data);
+
+/**
+ * Get pet statistics from main screen
+ * @return Pointer to pet stats structure
+ */
+pet_stats_t* main_screen_get_pet_stats(void);
+
+/**
+ * Update pet statistics in main screen
+ * @param stats Pointer to pet stats structure
+ * @return 0 on success, 1 on error
+ */
+uint8_t main_screen_update_pet_stats(pet_stats_t *stats);
+
+/**
+ * Initialize pet statistics with default values
+ * @param stats Pointer to pet stats structure
+ */
+void main_screen_init_pet_stats(pet_stats_t *stats);
+
+/**
+ * Handle pet event and update animations accordingly
+ * @param event_type Type of pet event
+ */
+void main_screen_handle_pet_event(pet_event_type_t event_type);
 #ifdef __cplusplus
 } /*extern "C"*/
 #endif

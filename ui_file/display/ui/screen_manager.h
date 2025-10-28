@@ -21,24 +21,34 @@
 
 #include "../lvgl/lvgl.h"
 
-#define KEY_UP          17
-#define KEY_DOWN        18
-#define KEY_LEFT        19
-#define KEY_RIGHT       20
-#define KEY_ENTER       10
-#define KEY_ESC         27
-#define KEY_AI          105
+#define KEY_UP    17
+#define KEY_LEFT  20
+#define KEY_DOWN  18
+#define KEY_RIGHT 19
+#define KEY_ENTER 10
+#define KEY_ESC   27
+#define KEY_AI    105
+
+#ifndef AI_PET_SCREEN_WIDTH
+#define AI_PET_SCREEN_WIDTH  384
+#endif
+#ifndef AI_PET_SCREEN_HEIGHT
+#define AI_PET_SCREEN_HEIGHT 168
+#endif
+
+// #define ENABLE_LVGL_HARDWARE
 /**
  * @brief Screen structure definition
  *
  * Defines a screen with initialization and deinitialization functions,
- * a pointer to the screen object, and a name identifier.
+ * a pointer to the screen object, a name identifier, and state preservation.
  */
 typedef struct {
     void (*init)(void);           /**< Screen initialization function */
     void (*deinit)(void);         /**< Screen deinitialization function */
     lv_obj_t **screen_obj;        /**< Pointer to the screen object */
     char *name;                   /**< Screen name identifier */
+    void *state_data;             /**< Pointer to screen-specific state data */
 } Screen_t;
 
 /* Screen manager function declarations */

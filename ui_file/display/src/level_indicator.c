@@ -127,8 +127,8 @@ void level_indicator_show(void)
     // Initialize sensor
     level_indicator_init_sensor();
 
-    printf("level_indicator_show: is_active set to %d, sensor_available=%d\n", 
-           g_level_data.is_active, 
+    printf("level_indicator_show: is_active set to %d, sensor_available=%d\n",
+           g_level_data.is_active,
 #ifndef LVGL_SIMULATOR
            g_level_data.sensor_available
 #else
@@ -253,7 +253,7 @@ void level_indicator_key_input(int key)
 #ifndef LVGL_SIMULATOR
             if (g_level_data.sensor_available) {
                 g_level_data.use_real_sensor = !g_level_data.use_real_sensor;
-                printf("Sensor mode switched to: %s\n", 
+                printf("Sensor mode switched to: %s\n",
                        g_level_data.use_real_sensor ? "Real BMI270" : "Simulation");
             } else {
                 printf("BMI270 sensor not available, cannot switch to real sensor mode\n");
@@ -338,20 +338,20 @@ void level_indicator_calibrate(void)
             // Calculate current raw angles and use them as calibration offset
             g_level_data.calibration_offset.x_angle = level_indicator_calculate_tilt_angle(acc_x, acc_y, acc_z, 0);
             g_level_data.calibration_offset.y_angle = level_indicator_calculate_tilt_angle(acc_x, acc_y, acc_z, 1);
-            
-            printf("Calibration completed: offset set to X:%.1f°, Y:%.1f°\n", 
+
+            printf("Calibration completed: offset set to X:%.1f°, Y:%.1f°\n",
                    g_level_data.calibration_offset.x_angle, g_level_data.calibration_offset.y_angle);
         } else {
             printf("Failed to read sensor for calibration\n");
             return;
         }
-    } else 
+    } else
 #endif
     {
         // Fallback for simulator: set current offset to make current position become center
         g_level_data.calibration_offset.x_angle = g_level_data.current_tilt.x_angle + g_level_data.calibration_offset.x_angle;
         g_level_data.calibration_offset.y_angle = g_level_data.current_tilt.y_angle + g_level_data.calibration_offset.y_angle;
-        printf("Calibration completed (simulator mode): offset set to X:%.1f°, Y:%.1f°\n", 
+        printf("Calibration completed (simulator mode): offset set to X:%.1f°, Y:%.1f°\n",
                g_level_data.calibration_offset.x_angle, g_level_data.calibration_offset.y_angle);
     }
 
@@ -447,7 +447,7 @@ static void level_indicator_update_ball_position(void)
     // Limit ball movement within circle (considering ball size)
     float max_radius = LEVEL_CIRCLE_RADIUS - LEVEL_BALL_SIZE / 2 - 5; // 5px margin from edge
     float distance = sqrtf(offset_x * offset_x + offset_y * offset_y);
-    
+
     if (distance > max_radius) {
         // Scale down if outside circle
         float scale = max_radius / distance;
@@ -555,10 +555,10 @@ static void level_indicator_create_circle(void)
     g_level_data.ball_y_current = LEVEL_CIRCLE_RADIUS - LEVEL_BALL_SIZE / 2;
     g_level_data.ball_x_target = g_level_data.ball_x_current;
     g_level_data.ball_y_target = g_level_data.ball_y_current;
-    
+
     // Set initial position explicitly (don't use lv_obj_center which conflicts with manual positioning)
-    lv_obj_set_pos(g_level_data.ball, 
-                   (lv_coord_t)g_level_data.ball_x_current, 
+    lv_obj_set_pos(g_level_data.ball,
+                   (lv_coord_t)g_level_data.ball_x_current,
                    (lv_coord_t)g_level_data.ball_y_current);
 }
 
@@ -581,8 +581,8 @@ static void level_indicator_create_controls(void)
     lv_label_set_text(g_level_data.angle_y_label, "Y: 0.0°");
 
     // Create sensor status label at the very bottom of screen
-    lv_obj_t *status_label = lv_label_create(g_level_data.screen); 
-    lv_obj_align(status_label, LV_ALIGN_BOTTOM_MID, 0, -2); 
+    lv_obj_t *status_label = lv_label_create(g_level_data.screen);
+    lv_obj_align(status_label, LV_ALIGN_BOTTOM_MID, 0, -2);
     lv_obj_set_style_text_font(status_label, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(status_label, lv_color_make(100, 100, 100), 0);
 
@@ -748,7 +748,7 @@ static void level_indicator_init_sensor(void)
 {
 #ifndef LVGL_SIMULATOR
     printf("Getting BMI270 sensor handle...\n");
-    
+
     // BMI270 is already registered, just get the handle
     g_level_data.bmi270_handle = board_bmi270_get_handle();
     if (g_level_data.bmi270_handle) {
@@ -774,12 +774,12 @@ static void level_indicator_read_real_sensor(void)
 
     float acc_x, acc_y, acc_z;
     int result = board_bmi270_read_accel(g_level_data.bmi270_handle, &acc_x, &acc_y, &acc_z);
-    
+
     if (result == 0) {  // OPERATE_RET_OK
         // Calculate tilt angles from accelerometer data
         float x_angle = level_indicator_calculate_tilt_angle(acc_x, acc_y, acc_z, 0); // X-axis tilt
         float y_angle = level_indicator_calculate_tilt_angle(acc_x, acc_y, acc_z, 1); // Y-axis tilt
-        
+
         // Debug output for sensor data (every 50 readings to avoid spam)
         static int sensor_debug_counter = 0;
         if (++sensor_debug_counter % 50 == 0) {
@@ -787,7 +787,7 @@ static void level_indicator_read_real_sensor(void)
                    acc_x, acc_y, acc_z, x_angle, y_angle,
                    g_level_data.calibration_offset.x_angle, g_level_data.calibration_offset.y_angle);
         }
-        
+
         // Update the level indicator with sensor data (calibration offset will be applied in level_indicator_update_tilt)
         level_indicator_update_tilt(x_angle, y_angle);
     } else {
@@ -802,15 +802,15 @@ static float level_indicator_calculate_tilt_angle(float acc_x, float acc_y, floa
 {
     // Calculate tilt angles using accelerometer data
     // For a device lying flat (horizontal), acc_z should be ~±9.8, acc_x and acc_y should be ~0
-    
+
     const float rad_to_deg = 180.0f / M_PI;
-    
+
     // Normalize the acceleration vector
     float magnitude = sqrtf(acc_x * acc_x + acc_y * acc_y + acc_z * acc_z);
     if (magnitude < 0.1f) {
         return 0.0f; // Avoid division by zero
     }
-    
+
     if (axis == 0) {
         // X-axis tilt (pitch): how much the device is tilted forward/backward
         // Use asin for small angle approximation when device is mostly horizontal
@@ -820,7 +820,7 @@ static float level_indicator_calculate_tilt_angle(float acc_x, float acc_y, floa
         if (normalized_y < -1.0f) normalized_y = -1.0f;
         return asinf(normalized_y) * rad_to_deg;
     } else {
-        // Y-axis tilt (roll): how much the device is tilted left/right  
+        // Y-axis tilt (roll): how much the device is tilted left/right
         // Use asin for small angle approximation when device is mostly horizontal
         float normalized_x = acc_x / magnitude;
         // Clamp to valid asin range

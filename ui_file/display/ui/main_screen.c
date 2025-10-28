@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
+#include <string.h>
 
 /***********************************************************
 ***********************Type Definitions********************
@@ -170,11 +171,28 @@ static uint8_t current_selected_button = 0;
 static uint32_t idle_animation_timer = 0;
 static uint32_t idle_animation_duration = 0;
 
+// Pet event callback system
+static pet_event_callback_t pet_event_callback = NULL;
+static void *pet_event_user_data = NULL;
+
+// Pet stats
+static pet_stats_t main_screen_pet_stats;
+
+// State preservation structure for main screen
+typedef struct {
+    uint8_t selected_menu_button;
+} main_screen_state_t;
+
+static main_screen_state_t main_screen_state = {
+    .selected_menu_button = 0
+};
+
 Screen_t main_screen = {
     .init = main_screen_init,
     .deinit = main_screen_deinit,
     .screen_obj = &ui_main_screen,
     .name = "Main",
+    .state_data = &main_screen_state,
 };
 
 /***********************************************************
@@ -286,6 +304,32 @@ static void keyboard_event_cb(lv_event_t *e)
             printf("[%s] Keyboard event: ESC\n", main_screen.name);
             // ESC shows help message
             toast_screen_show("Use LEFT/RIGHT to select, ENTER to confirm", 2000);
+            break;
+
+        // Pet event testing keys (demonstrate pet event callback system)
+        case 116: // 't' key - Test pet event: eating
+            printf("T key pressed - Testing pet event: eating\n");
+            main_screen_handle_pet_event(PET_EVENT_FEED_HAMBURGER);
+            break;
+        case 121: // 'y' key - Test pet event: sleeping
+            printf("Y key pressed - Testing pet event: sleeping\n");
+            main_screen_handle_pet_event(PET_EVENT_SLEEP);
+            break;
+        case 117: // 'u' key - Test pet event: wake up
+            printf("U key pressed - Testing pet event: wake up\n");
+            main_screen_handle_pet_event(PET_EVENT_WAKE_UP);
+            break;
+        case 105: // 'i' key - Test pet event: bath
+            printf("I key pressed - Testing pet event: bath\n");
+            main_screen_handle_pet_event(PET_EVENT_TAKE_BATH);
+            break;
+        case 111: // 'o' key - Test pet event: toilet
+            printf("O key pressed - Testing pet event: toilet\n");
+            main_screen_handle_pet_event(PET_EVENT_TOILET);
+            break;
+        case 112: // 'p' key - Test pet event: randomize stats
+            printf("P key pressed - Testing pet event: randomize stats\n");
+            main_screen_handle_pet_event(PET_STAT_RANDOMIZE);
             break;
 
         // Pet animation testing keys (same as ai_pocket_pet_app.c)
@@ -463,6 +507,9 @@ void main_screen_init(void)
     simple_demo_set_wifi_strength(3);
     simple_demo_set_cellular_status(2, true);
     simple_demo_set_battery_status(4, false);
+
+    // Initialize pet stats
+    main_screen_init_pet_stats(NULL);
 }
 
 /**
@@ -1327,8 +1374,8 @@ static lv_obj_t* create_bottom_menu(lv_obj_t *parent)
     }
 
     // Initialize first button as selected like menu_system.c
-    current_selected_button = 0;
-    update_menu_button_selection(0, 0);
+    current_selected_button = main_screen_state.selected_menu_button; // Restore from saved state
+    update_menu_button_selection(0, current_selected_button);
 
     return bottom_container;
 }
@@ -1374,6 +1421,7 @@ static void handle_main_navigation(uint32_t key)
     if (new_selection != old_selection) {
         update_menu_button_selection(old_selection, new_selection);
         current_selected_button = new_selection;
+        main_screen_state.selected_menu_button = new_selection; // Save state
         printf("[%s] Menu navigation: %d -> %d\n", main_screen.name, old_selection, new_selection);
     }
 }
@@ -1384,4 +1432,157 @@ static void handle_main_navigation(uint32_t key)
 static uint8_t get_selected_button(void)
 {
     return current_selected_button;
+}
+
+/***********************************************************
+***************Pet Event Callback Functions***************
+***********************************************************/
+
+void main_screen_register_pet_event_callback(pet_event_callback_t callback, void *user_data)
+{
+    pet_event_callback = callback;
+    pet_event_user_data = user_data;
+    printf("[%s] Pet event callback registered\n", main_screen.name);
+}
+
+pet_stats_t* main_screen_get_pet_stats(void)
+{
+    return &main_screen_pet_stats;
+}
+
+uint8_t main_screen_update_pet_stats(pet_stats_t *stats)
+{
+    if (NULL == stats) {
+        return 1;
+    }
+
+    if (stats->health <= 100) {
+        main_screen_pet_stats.health = stats->health;
+    }
+    if (stats->hungry <= 100) {
+        main_screen_pet_stats.hungry = stats->hungry;
+    }
+    if (stats->clean <= 100) {
+        main_screen_pet_stats.clean = stats->clean;
+    }
+    if (stats->happy <= 100) {
+        main_screen_pet_stats.happy = stats->happy;
+    }
+    if (stats->age_days <= 999) {
+        main_screen_pet_stats.age_days = stats->age_days;
+    }
+    if (stats->weight_kg <= 999.9) {
+        main_screen_pet_stats.weight_kg = stats->weight_kg;
+    }
+
+    printf("[%s] Pet stats updated - Health: %d, Hungry: %d, Clean: %d, Happy: %d\n",
+           main_screen.name, stats->health, stats->hungry, stats->clean, stats->happy);
+
+    return 0;
+}
+
+void main_screen_init_pet_stats(pet_stats_t *stats)
+{
+    if (NULL == stats) {
+        stats = &main_screen_pet_stats;
+    }
+
+    stats->health = 85;
+    stats->hungry = 60;
+    stats->clean = 70;
+    stats->happy = 90;
+    stats->age_days = 15;
+    stats->weight_kg = 1.2f;
+    strcpy(stats->name, "Ducky");
+
+    // Also initialize internal pet stats
+    main_screen_pet_stats = *stats;
+
+    printf("[%s] Pet stats initialized - Name: %s, Health: %d, Hungry: %d, Clean: %d, Happy: %d\n",
+           main_screen.name, stats->name, stats->health, stats->hungry, stats->clean, stats->happy);
+}
+
+/**
+ * @brief Trigger a pet event through the callback system
+ * @param event_type Type of pet event
+ */
+static void trigger_pet_event(pet_event_type_t event_type)
+{
+    if (pet_event_callback != NULL) {
+        printf("[%s] Triggering pet event: %d\n", main_screen.name, event_type);
+        pet_event_callback(event_type, pet_event_user_data);
+    } else {
+        printf("[%s] Pet event callback not registered, cannot trigger event %d\n", main_screen.name, event_type);
+    }
+}
+
+/**
+ * @brief Handle pet event and update animations accordingly
+ * @param event_type Type of pet event
+ */
+void main_screen_handle_pet_event(pet_event_type_t event_type)
+{
+    // First trigger the callback if registered
+    trigger_pet_event(event_type);
+
+    // Then handle visual updates based on event type
+    switch (event_type) {
+        case PET_EVENT_FEED_HAMBURGER:
+        case PET_EVENT_FEED_PIZZA:
+        case PET_EVENT_FEED_APPLE:
+        case PET_EVENT_FEED_FISH:
+        case PET_EVENT_FEED_CARROT:
+        case PET_EVENT_FEED_ICE_CREAM:
+        case PET_EVENT_FEED_COOKIE:
+            // Show eating animation
+            simple_pet_area_set_animation(AI_PET_STATE_EAT);
+            printf("[%s] Pet is eating\n", main_screen.name);
+            break;
+
+        case PET_EVENT_DRINK_WATER:
+            // Show eating animation for drinking
+            simple_pet_area_set_animation(AI_PET_STATE_EAT);
+            printf("[%s] Pet is drinking water\n", main_screen.name);
+            break;
+
+        case PET_EVENT_TOILET:
+            // Show toilet animation
+            simple_pet_area_set_animation(AI_PET_STATE_TOILET);
+            printf("[%s] Pet is using toilet\n", main_screen.name);
+            break;
+
+        case PET_EVENT_TAKE_BATH:
+            // Show bath animation
+            simple_pet_area_set_animation(AI_PET_STATE_BATH);
+            printf("[%s] Pet is taking a bath\n", main_screen.name);
+            break;
+
+        case PET_EVENT_SEE_DOCTOR:
+            // Show sick animation temporarily
+            simple_pet_area_set_animation(AI_PET_STATE_SICK);
+            printf("[%s] Pet is seeing the doctor\n", main_screen.name);
+            break;
+
+        case PET_EVENT_SLEEP:
+            // Show sleep animation
+            simple_pet_area_set_animation(AI_PET_STATE_SLEEP);
+            printf("[%s] Pet is sleeping\n", main_screen.name);
+            break;
+
+        case PET_EVENT_WAKE_UP:
+            // Return to normal animation
+            simple_pet_area_set_animation(AI_PET_STATE_NORMAL);
+            printf("[%s] Pet is waking up\n", main_screen.name);
+            break;
+
+        case PET_STAT_RANDOMIZE:
+            // Show happy animation for stat randomization
+            simple_pet_area_set_animation(AI_PET_STATE_HAPPY);
+            printf("[%s] Pet stats randomized\n", main_screen.name);
+            break;
+
+        default:
+            printf("[%s] Unknown pet event: %d\n", main_screen.name, event_type);
+            break;
+    }
 }

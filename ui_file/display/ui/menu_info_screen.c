@@ -16,6 +16,7 @@
 
 #include "menu_info_screen.h"
 #include "screen_manager.h"
+#include "keyboard_screen.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -30,6 +31,13 @@ static lv_timer_t *timer;
 static pet_stats_t current_pet_stats;
 static uint8_t selected_item = 0;
 
+// State management
+typedef struct {
+    uint8_t selected_item;
+} menu_info_screen_state_t;
+
+static menu_info_screen_state_t *g_info_screen_state = NULL;
+
 // UI Constants
 #define STAT_CONTAINER_HEIGHT 30
 #define STAT_CONTAINER_WIDTH 320
@@ -41,6 +49,7 @@ Screen_t menu_info_screen = {
     .deinit = menu_info_screen_deinit,
     .screen_obj = &ui_info_menu_screen,
     .name = "menu_info_screen",
+    .state_data = NULL,
 };
 
 // External image declarations
@@ -60,6 +69,8 @@ static void create_stat_display_item(const char *label, const char *value);
 static void create_stat_icon_bar(const char *label, int value);
 static void update_selection(uint8_t old_selection, uint8_t new_selection);
 static void handle_action_selection(void);
+static void keyboard_callback(const char *text, void *user_data);
+static void show_keyboard_for_pet_name(void);
 
 /***********************************************************
 ***********************function define**********************
@@ -299,6 +310,7 @@ static void handle_action_selection(void)
         switch (action_index) {
             case 0: // Edit Pet Name
                 printf("Edit Pet Name action selected\n");
+                show_keyboard_for_pet_name();
                 break;
             case 1: // View Statistics
                 printf("View Statistics action selected\n");
@@ -326,6 +338,35 @@ static void handle_action_selection(void)
 }
 
 /**
+ * @brief Keyboard callback function
+ */
+static void keyboard_callback(const char *text, void *user_data)
+{
+    (void)user_data;  // Unused parameter
+
+    if (text && strlen(text) > 0) {
+        // Update pet name
+        strncpy(current_pet_stats.name, text, sizeof(current_pet_stats.name) - 1);
+        current_pet_stats.name[sizeof(current_pet_stats.name) - 1] = '\0';
+        printf("Pet name updated to: %s\n", current_pet_stats.name);
+
+        // Refresh the info screen to show updated name
+        menu_info_screen_deinit();
+        menu_info_screen_init();
+    } else {
+        printf("Keyboard input cancelled or empty\n");
+    }
+}
+
+/**
+ * @brief Show keyboard for pet name editing
+ */
+static void show_keyboard_for_pet_name(void)
+{
+    keyboard_screen_show_with_callback(current_pet_stats.name, keyboard_callback, NULL);
+}
+
+/**
  * @brief Initialize the info menu screen
  *
  * This function creates the info menu UI with pet information display,
@@ -333,6 +374,28 @@ static void handle_action_selection(void)
  */
 void menu_info_screen_init(void)
 {
+    // Initialize state management
+    if (menu_info_screen.state_data == NULL) {
+        g_info_screen_state = malloc(sizeof(menu_info_screen_state_t));
+        if (g_info_screen_state) {
+            memset(g_info_screen_state, 0, sizeof(menu_info_screen_state_t));
+            menu_info_screen.state_data = g_info_screen_state;
+        }
+    } else {
+        g_info_screen_state = (menu_info_screen_state_t *)menu_info_screen.state_data;
+    }
+
+    // Initialize pet stats if not already set
+    if (strlen(current_pet_stats.name) == 0) {
+        current_pet_stats.health = 85;
+        current_pet_stats.hungry = 60;
+        current_pet_stats.clean = 70;
+        current_pet_stats.happy = 90;
+        current_pet_stats.age_days = 15;
+        current_pet_stats.weight_kg = 1.2f;
+        strcpy(current_pet_stats.name, "Ducky");
+    }
+
     ui_info_menu_screen = lv_obj_create(NULL);
     lv_obj_set_size(ui_info_menu_screen, 384, 168);
     lv_obj_set_style_bg_color(ui_info_menu_screen, lv_color_white(), 0);
@@ -360,10 +423,20 @@ void menu_info_screen_init(void)
     create_separator();
     create_actions_section();
 
-    // Highlight first item
-    selected_item = 0;
+    // Restore or initialize selection
+    if (g_info_screen_state) {
+        selected_item = g_info_screen_state->selected_item;
+    } else {
+        selected_item = 0;
+    }
+
+    // Highlight selected item
     if (lv_obj_get_child_cnt(info_menu_list) > 0) {
-        update_selection(0, 0);
+        uint32_t child_count = lv_obj_get_child_cnt(info_menu_list);
+        if (selected_item >= child_count) {
+            selected_item = 0;
+        }
+        update_selection(0, selected_item);
     }
 
     timer = lv_timer_create(menu_info_screen_timer_cb, 1000, NULL);
@@ -380,6 +453,11 @@ void menu_info_screen_init(void)
  */
 void menu_info_screen_deinit(void)
 {
+    // Save state before cleanup
+    if (g_info_screen_state) {
+        g_info_screen_state->selected_item = selected_item;
+    }
+
     if (ui_info_menu_screen) {
         printf("deinit info menu screen\n");
         lv_obj_remove_event_cb(ui_info_menu_screen, keyboard_event_cb);

@@ -24,8 +24,8 @@ extern "C" {
 /*********************
  *      INCLUDES
  *********************/
-#include "screen_manager.h"
 
+#include "main_screen.h"
 /*********************
  *      DEFINES
  *********************/
@@ -37,15 +37,6 @@ extern "C" {
 /**
  * @brief Pet statistics structure
  */
-typedef struct {
-    uint8_t health;             /**< Health level (0-100) */
-    uint8_t hungry;             /**< Hunger level (0-100) */
-    uint8_t clean;              /**< Cleanliness level (0-100) */
-    uint8_t happy;              /**< Happiness level (0-100) */
-    uint16_t age_days;          /**< Age in days */
-    float weight_kg;            /**< Weight in kg */
-    char name[32];              /**< Pet name */
-} pet_stats_t;
 
 /*********************
  * GLOBAL PROTOTYPES

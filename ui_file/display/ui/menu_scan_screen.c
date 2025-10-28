@@ -18,6 +18,11 @@
 
 #include "menu_scan_screen.h"
 #include "screen_manager.h"
+#include "wifi_scan_screen.h"
+#include "i2c_scan_screen.h"
+#include "dino_game_screen.h"
+#include "snake_game_screen.h"
+#include "level_indicator_screen.h"
 #include <stdio.h>
 
 /***********************************************************
@@ -27,18 +32,34 @@
 static lv_obj_t *ui_menu_scan_screen;
 static lv_obj_t *scan_menu_list;
 static lv_timer_t *timer;
-static uint8_t selected_item = 0;
+
+// State preservation structure for menu scan screen
+typedef struct {
+    uint8_t selected_item;
+} menu_scan_screen_state_t;
+
+static menu_scan_screen_state_t menu_scan_screen_state = {
+    .selected_item = 0
+};
 
 Screen_t menu_scan_screen = {
     .init = menu_scan_screen_init,
     .deinit = menu_scan_screen_deinit,
     .screen_obj = &ui_menu_scan_screen,
     .name = "menu_scan_screen",
+    .state_data = &menu_scan_screen_state,
 };
 
 /***********************************************************
 ********************function declaration********************
 ***********************************************************/
+
+// External screen declarations
+extern Screen_t wifi_scan_screen;
+extern Screen_t i2c_scan_screen;
+extern Screen_t dino_game_screen;
+extern Screen_t snake_game_screen;
+extern Screen_t level_indicator_screen;
 
 static void menu_scan_screen_timer_cb(lv_timer_t *timer);
 static void keyboard_event_cb(lv_event_t *e);
@@ -78,18 +99,18 @@ static void keyboard_event_cb(lv_event_t *e)
     uint32_t child_count = lv_obj_get_child_cnt(scan_menu_list);
     if (child_count == 0) return;
 
-    uint8_t old_selection = selected_item;
+    uint8_t old_selection = menu_scan_screen_state.selected_item; // Use state from structure
     uint8_t new_selection = old_selection;
 
     switch (key) {
         case KEY_UP:
-            if (selected_item > 0) {
-                new_selection = selected_item - 1;
+            if (menu_scan_screen_state.selected_item > 0) {
+                new_selection = menu_scan_screen_state.selected_item - 1;
             }
             break;
         case KEY_DOWN:
-            if (selected_item < child_count - 1) {
-                new_selection = selected_item + 1;
+            if (menu_scan_screen_state.selected_item < child_count - 1) {
+                new_selection = menu_scan_screen_state.selected_item + 1;
             }
             break;
         case KEY_LEFT:
@@ -112,7 +133,7 @@ static void keyboard_event_cb(lv_event_t *e)
 
     if (new_selection != old_selection) {
         update_selection(old_selection, new_selection);
-        selected_item = new_selection;
+        menu_scan_screen_state.selected_item = new_selection; // Save state
     }
 }
 
@@ -140,26 +161,26 @@ static void update_selection(uint8_t old_selection, uint8_t new_selection)
  */
 static void handle_scan_selection(void)
 {
-    switch (selected_item) {
+    switch (menu_scan_screen_state.selected_item) { // Use state from structure
         case 0: // WiFi scan demo
             printf("WiFi scan demo selected\n");
-            // TODO: Implement WiFi scan functionality
+            screen_load(&wifi_scan_screen);
             break;
         case 1: // I2C device scan demo
             printf("I2C device scan demo selected\n");
-            // TODO: Implement I2C scan functionality
+            screen_load(&i2c_scan_screen);
             break;
         case 2: // Dino Game
             printf("Dino Game selected\n");
-            // TODO: Implement Dino game
+            screen_load(&dino_game_screen);
             break;
         case 3: // Snake Game
             printf("Snake Game selected\n");
-            // TODO: Implement Snake game
+            screen_load(&snake_game_screen);
             break;
         case 4: // Level Indicator
             printf("Level Indicator selected\n");
-            // TODO: Implement Level indicator
+            screen_load(&level_indicator_screen);
             break;
         default:
             printf("Unknown scan option selected\n");
@@ -202,9 +223,12 @@ void menu_scan_screen_init(void)
     lv_list_add_btn(scan_menu_list, LV_SYMBOL_SHUFFLE, "Snake Game");
     lv_list_add_btn(scan_menu_list, LV_SYMBOL_EYE_OPEN, "Level Indicator");
 
-    // Highlight first item
-    selected_item = 0;
-    if (lv_obj_get_child_cnt(scan_menu_list) > 0) {
+    // Highlight saved selected item
+    if (lv_obj_get_child_cnt(scan_menu_list) > menu_scan_screen_state.selected_item) {
+        update_selection(0, menu_scan_screen_state.selected_item); // Restore from saved state
+    } else {
+        // If saved selection is invalid, reset to 0
+        menu_scan_screen_state.selected_item = 0;
         update_selection(0, 0);
     }
 
