@@ -1048,9 +1048,9 @@
 
     /** 1: Show CPU usage and FPS count.
      *  - Requires `LV_USE_SYSMON = 1` */
-    #define LV_USE_PERF_MONITOR 0
+    #define LV_USE_PERF_MONITOR 1
     #if LV_USE_PERF_MONITOR
-        #define LV_USE_PERF_MONITOR_POS LV_ALIGN_BOTTOM_RIGHT
+        #define LV_USE_PERF_MONITOR_POS LV_ALIGN_RIGHT_MID
 
         /** 0: Displays performance data on the screen; 1: Prints performance data using log. */
         #define LV_USE_PERF_MONITOR_LOG_MODE 0

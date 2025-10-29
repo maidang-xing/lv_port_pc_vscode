@@ -69,21 +69,15 @@ static port_info_t port_info[] = {
     {"PORT 2", 6, 7}
 };
 
-// State preservation structure for i2c scan screen
-typedef struct {
-    int current_port_index;
-} i2c_scan_screen_state_t;
-
-static i2c_scan_screen_state_t i2c_scan_screen_state = {
-    .current_port_index = 0
-};
+// Current port index (no state preservation)
+static int current_port_index = 0;
 
 Screen_t i2c_scan_screen = {
     .init = i2c_scan_screen_init,
     .deinit = i2c_scan_screen_deinit,
     .screen_obj = &ui_i2c_scan_screen,
     .name = "i2c_scan",
-    .state_data = &i2c_scan_screen_state,
+    .state_data = NULL,
 };
 
 /***********************************************************
@@ -108,19 +102,19 @@ static void switch_to_port(int port_index)
         return;
     }
 
-    i2c_scan_screen_state.current_port_index = port_index; // Save state
+    current_port_index = port_index;
 
 #ifdef ENABLE_LVGL_HARDWARE
-    printf("[Scan] Switching to PORT: %d\n", i2c_scan_screen_state.current_port_index);
-    tkl_io_pinmux_config(port_info[i2c_scan_screen_state.current_port_index].scl, i2c_scan_screen_state.current_port_index*2);
-    tkl_io_pinmux_config(port_info[i2c_scan_screen_state.current_port_index].sda, i2c_scan_screen_state.current_port_index*2+1);
+    printf("[Scan] Switching to PORT: %d\n", current_port_index);
+    tkl_io_pinmux_config(port_info[current_port_index].scl, current_port_index*2);
+    tkl_io_pinmux_config(port_info[current_port_index].sda, current_port_index*2+1);
 
     TUYA_IIC_BASE_CFG_T cfg;
     cfg.role = TUYA_IIC_MODE_MASTER;
     cfg.speed = TUYA_IIC_BUS_SPEED_100K;
     cfg.addr_width = TUYA_IIC_ADDRESS_7BIT;
 
-    tkl_i2c_init(i2c_scan_screen_state.current_port_index, &cfg);
+    tkl_i2c_init(current_port_index, &cfg);
 #endif
 
     // Update display
@@ -136,14 +130,14 @@ static void update_port_display(void)
     if (info_bar) {
         char port_text[32];
         snprintf(port_text, sizeof(port_text), "%s : SCL=%d, SDA=%d",
-                 port_info[i2c_scan_screen_state.current_port_index].port_name,
-                 port_info[i2c_scan_screen_state.current_port_index].scl,
-                 port_info[i2c_scan_screen_state.current_port_index].sda);
+                 port_info[current_port_index].port_name,
+                 port_info[current_port_index].scl,
+                 port_info[current_port_index].sda);
         lv_label_set_text(info_bar, port_text);
     }
 
-    printf("[Scan] Displaying PORT %d: SCL=%d, SDA=%d\n", i2c_scan_screen_state.current_port_index,
-           port_info[i2c_scan_screen_state.current_port_index].scl, port_info[i2c_scan_screen_state.current_port_index].sda);
+    printf("[Scan] Displaying PORT %d: SCL=%d, SDA=%d\n", current_port_index,
+           port_info[current_port_index].scl, port_info[current_port_index].sda);
 }
 
 /**
@@ -231,18 +225,18 @@ static void create_scan_matrix(void)
                 uint8_t i2c_addr = addr;
                 uint8_t data_buf[1] = {0};
 
-                if (OPRT_OK == tkl_i2c_master_send(i2c_scan_screen_state.current_port_index, i2c_addr, data_buf, 0, TRUE)) {
+                if (OPRT_OK == tkl_i2c_master_send(current_port_index, i2c_addr, data_buf, 0, TRUE)) {
                     // Device found - display address in green
                     snprintf(addr_text, sizeof(addr_text), "%02X", addr);
                     lv_label_set_text(cell, addr_text);
-                    lv_obj_set_style_bg_color(cell, lv_color_hex(0x00ff00), 0);
+                    lv_obj_set_style_bg_color(cell, lv_color_white(), 0);
                     lv_obj_set_style_text_color(cell, lv_color_black(), 0);
                     printf("I2C device found at 0x%02X\n", addr);
                 } else {
                     // No device - display placeholder
-                    lv_label_set_text(cell, "--");
-                    lv_obj_set_style_bg_color(cell, lv_color_hex(0xf0f0f0), 0);
-                    lv_obj_set_style_text_color(cell, lv_color_hex(0x808080), 0);
+                    lv_label_set_text(cell, "");
+                    lv_obj_set_style_bg_color(cell, lv_color_white(), 0);
+                    lv_obj_set_style_text_color(cell, lv_color_black(), 0);
                 }
 #else
                 // Simulator mode - show some dummy data like peripherals_scan.c
@@ -252,15 +246,15 @@ static void create_scan_matrix(void)
                     lv_obj_set_style_bg_color(cell, lv_color_hex(0x00ff00), 0);
                     lv_obj_set_style_text_color(cell, lv_color_black(), 0);
                 } else {
-                    lv_label_set_text(cell, "--");
+                    lv_label_set_text(cell, "");
                     lv_obj_set_style_bg_color(cell, lv_color_hex(0xf0f0f0), 0);
                     lv_obj_set_style_text_color(cell, lv_color_hex(0x808080), 0);
                 }
 #endif
             } else {
-                lv_label_set_text(cell, "--");
-                lv_obj_set_style_bg_color(cell, lv_color_hex(0xf0f0f0), 0);
-                lv_obj_set_style_text_color(cell, lv_color_hex(0x808080), 0);
+                lv_label_set_text(cell, "");
+                lv_obj_set_style_bg_color(cell, lv_color_white(), 0);
+                lv_obj_set_style_text_color(cell, lv_color_black(), 0);
             }
 
             lv_obj_set_width(cell, 16);
@@ -323,14 +317,14 @@ static void keyboard_event_cb(lv_event_t *e)
             break;
         case KEY_LEFT:
             // Switch to previous PORT
-            if (i2c_scan_screen_state.current_port_index > 0) {
-                switch_to_port(i2c_scan_screen_state.current_port_index - 1);
+            if (current_port_index > 0) {
+                switch_to_port(current_port_index - 1);
             }
             break;
         case KEY_RIGHT:
             // Switch to next PORT
-            if (i2c_scan_screen_state.current_port_index < (int)(sizeof(port_info) / sizeof(port_info[0]) - 1)) {
-                switch_to_port(i2c_scan_screen_state.current_port_index + 1);
+            if (current_port_index < (int)(sizeof(port_info) / sizeof(port_info[0]) - 1)) {
+                switch_to_port(current_port_index + 1);
             }
             break;
         case KEY_ENTER:
@@ -354,7 +348,7 @@ void i2c_scan_screen_show_port(uint8_t port)
     }
 #endif
 
-    i2c_scan_screen_state.current_port_index = port; // Save state
+    current_port_index = port;
     screen_load(&i2c_scan_screen);
 }
 
@@ -392,8 +386,9 @@ void i2c_scan_screen_init(void)
     lv_obj_align(right_icon, LV_ALIGN_TOP_MID, 85, 25);
     lv_img_set_zoom(right_icon, 200);
 
-    // Initialize I2C port - restore from saved state
-    switch_to_port(i2c_scan_screen_state.current_port_index);
+    // Initialize I2C port - always start from PORT 0
+    current_port_index = 0;
+    switch_to_port(current_port_index);
 
     // Event handling
     lv_obj_add_event_cb(ui_i2c_scan_screen, keyboard_event_cb, LV_EVENT_KEY, NULL);
@@ -410,6 +405,11 @@ void i2c_scan_screen_deinit(void)
         printf("deinit I2C scan screen\n");
         lv_obj_remove_event_cb(ui_i2c_scan_screen, keyboard_event_cb);
         lv_group_remove_obj(ui_i2c_scan_screen);
+
+#ifdef ENABLE_LVGL_HARDWARE
+        tkl_i2c_deinit(TUYA_I2C_NUM_1);
+        tkl_i2c_deinit(TUYA_I2C_NUM_2);
+#endif
     }
 
     // Reset pointers

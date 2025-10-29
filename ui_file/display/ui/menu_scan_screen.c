@@ -32,22 +32,14 @@
 static lv_obj_t *ui_menu_scan_screen;
 static lv_obj_t *scan_menu_list;
 static lv_timer_t *timer;
-
-// State preservation structure for menu scan screen
-typedef struct {
-    uint8_t selected_item;
-} menu_scan_screen_state_t;
-
-static menu_scan_screen_state_t menu_scan_screen_state = {
-    .selected_item = 0
-};
+static uint8_t selected_item = 0;
 
 Screen_t menu_scan_screen = {
     .init = menu_scan_screen_init,
     .deinit = menu_scan_screen_deinit,
     .screen_obj = &ui_menu_scan_screen,
     .name = "menu_scan_screen",
-    .state_data = &menu_scan_screen_state,
+    .state_data = NULL,
 };
 
 /***********************************************************
@@ -99,18 +91,18 @@ static void keyboard_event_cb(lv_event_t *e)
     uint32_t child_count = lv_obj_get_child_cnt(scan_menu_list);
     if (child_count == 0) return;
 
-    uint8_t old_selection = menu_scan_screen_state.selected_item; // Use state from structure
+    uint8_t old_selection = selected_item;
     uint8_t new_selection = old_selection;
 
     switch (key) {
         case KEY_UP:
-            if (menu_scan_screen_state.selected_item > 0) {
-                new_selection = menu_scan_screen_state.selected_item - 1;
+            if (selected_item > 0) {
+                new_selection = selected_item - 1;
             }
             break;
         case KEY_DOWN:
-            if (menu_scan_screen_state.selected_item < child_count - 1) {
-                new_selection = menu_scan_screen_state.selected_item + 1;
+            if (selected_item < child_count - 1) {
+                new_selection = selected_item + 1;
             }
             break;
         case KEY_LEFT:
@@ -133,7 +125,7 @@ static void keyboard_event_cb(lv_event_t *e)
 
     if (new_selection != old_selection) {
         update_selection(old_selection, new_selection);
-        menu_scan_screen_state.selected_item = new_selection; // Save state
+        selected_item = new_selection;
     }
 }
 
@@ -161,7 +153,7 @@ static void update_selection(uint8_t old_selection, uint8_t new_selection)
  */
 static void handle_scan_selection(void)
 {
-    switch (menu_scan_screen_state.selected_item) { // Use state from structure
+    switch (selected_item) {
         case 0: // WiFi scan demo
             printf("WiFi scan demo selected\n");
             screen_load(&wifi_scan_screen);
@@ -223,12 +215,9 @@ void menu_scan_screen_init(void)
     lv_list_add_btn(scan_menu_list, LV_SYMBOL_SHUFFLE, "Snake Game");
     lv_list_add_btn(scan_menu_list, LV_SYMBOL_EYE_OPEN, "Level Indicator");
 
-    // Highlight saved selected item
-    if (lv_obj_get_child_cnt(scan_menu_list) > menu_scan_screen_state.selected_item) {
-        update_selection(0, menu_scan_screen_state.selected_item); // Restore from saved state
-    } else {
-        // If saved selection is invalid, reset to 0
-        menu_scan_screen_state.selected_item = 0;
+    // Highlight first item always
+    selected_item = 0;
+    if (lv_obj_get_child_cnt(scan_menu_list) > 0) {
         update_selection(0, 0);
     }
 

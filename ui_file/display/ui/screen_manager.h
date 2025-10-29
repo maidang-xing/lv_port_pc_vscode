@@ -21,6 +21,11 @@
 
 #include "../lvgl/lvgl.h"
 
+/***********************************************************
+************************macro define************************
+***********************************************************/
+// #define ENABLE_LVGL_HARDWARE
+
 #define KEY_UP    17
 #define KEY_LEFT  20
 #define KEY_DOWN  18
@@ -35,8 +40,9 @@
 #ifndef AI_PET_SCREEN_HEIGHT
 #define AI_PET_SCREEN_HEIGHT 168
 #endif
-
-// #define ENABLE_LVGL_HARDWARE
+/***********************************************************
+***********************variable define**********************
+***********************************************************/
 /**
  * @brief Screen structure definition
  *
@@ -51,7 +57,9 @@ typedef struct {
     void *state_data;             /**< Pointer to screen-specific state data */
 } Screen_t;
 
-/* Screen manager function declarations */
+/***********************************************************
+********************function declaration********************
+***********************************************************/
 
 /**
  * @brief Get the current screen (top of stack)

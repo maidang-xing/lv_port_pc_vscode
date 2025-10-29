@@ -31,13 +31,6 @@ static lv_timer_t *timer;
 static pet_stats_t current_pet_stats;
 static uint8_t selected_item = 0;
 
-// State management
-typedef struct {
-    uint8_t selected_item;
-} menu_info_screen_state_t;
-
-static menu_info_screen_state_t *g_info_screen_state = NULL;
-
 // UI Constants
 #define STAT_CONTAINER_HEIGHT 30
 #define STAT_CONTAINER_WIDTH 320
@@ -374,17 +367,6 @@ static void show_keyboard_for_pet_name(void)
  */
 void menu_info_screen_init(void)
 {
-    // Initialize state management
-    if (menu_info_screen.state_data == NULL) {
-        g_info_screen_state = malloc(sizeof(menu_info_screen_state_t));
-        if (g_info_screen_state) {
-            memset(g_info_screen_state, 0, sizeof(menu_info_screen_state_t));
-            menu_info_screen.state_data = g_info_screen_state;
-        }
-    } else {
-        g_info_screen_state = (menu_info_screen_state_t *)menu_info_screen.state_data;
-    }
-
     // Initialize pet stats if not already set
     if (strlen(current_pet_stats.name) == 0) {
         current_pet_stats.health = 85;
@@ -423,20 +405,12 @@ void menu_info_screen_init(void)
     create_separator();
     create_actions_section();
 
-    // Restore or initialize selection
-    if (g_info_screen_state) {
-        selected_item = g_info_screen_state->selected_item;
-    } else {
-        selected_item = 0;
-    }
+    // Always start from first item
+    selected_item = 0;
 
-    // Highlight selected item
+    // Highlight first item
     if (lv_obj_get_child_cnt(info_menu_list) > 0) {
-        uint32_t child_count = lv_obj_get_child_cnt(info_menu_list);
-        if (selected_item >= child_count) {
-            selected_item = 0;
-        }
-        update_selection(0, selected_item);
+        update_selection(0, 0);
     }
 
     timer = lv_timer_create(menu_info_screen_timer_cb, 1000, NULL);
@@ -453,11 +427,6 @@ void menu_info_screen_init(void)
  */
 void menu_info_screen_deinit(void)
 {
-    // Save state before cleanup
-    if (g_info_screen_state) {
-        g_info_screen_state->selected_item = selected_item;
-    }
-
     if (ui_info_menu_screen) {
         printf("deinit info menu screen\n");
         lv_obj_remove_event_cb(ui_info_menu_screen, keyboard_event_cb);

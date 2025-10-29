@@ -24,7 +24,9 @@
 #include <time.h>
 #include <stdlib.h>
 #include <string.h>
-
+#if defined(ENABLE_LVGL_HARDWARE)
+#include "axp2101_driver.h"
+#endif
 /***********************************************************
 ***********************Type Definitions********************
 ***********************************************************/
@@ -125,9 +127,10 @@ static bool menu_mode = false;  // Flag to track if we're in menu selection mode
 
 // Status bar components
 static lv_obj_t *wifi_icon;
-static lv_obj_t *four_g_logo_obj;  // 重命名避免冲突
+static lv_obj_t *four_g_logo_obj;
 static lv_obj_t *cellular_icon;
 static lv_obj_t *battery_icon;
+static lv_obj_t *battery_label;  // Battery info label
 
 // Status tracking
 static uint8_t current_wifi_strength = 3;
@@ -178,21 +181,11 @@ static void *pet_event_user_data = NULL;
 // Pet stats
 static pet_stats_t main_screen_pet_stats;
 
-// State preservation structure for main screen
-typedef struct {
-    uint8_t selected_menu_button;
-} main_screen_state_t;
-
-static main_screen_state_t main_screen_state = {
-    .selected_menu_button = 0
-};
-
 Screen_t main_screen = {
     .init = main_screen_init,
     .deinit = main_screen_deinit,
     .screen_obj = &ui_main_screen,
     .name = "Main",
-    .state_data = &main_screen_state,
 };
 
 /***********************************************************
@@ -243,6 +236,7 @@ static const lv_img_dsc_t* get_wifi_icon_by_strength(uint8_t strength);
 static const lv_img_dsc_t* get_cellular_icon_by_strength(uint8_t strength, bool connected);
 static const lv_img_dsc_t* get_battery_icon_by_level(uint8_t level, bool charging);
 static void update_status_bar_icons(void);
+static void update_battery_info(void);
 
 // Pet animation functions
 static void pet_animation_cb(lv_timer_t *timer);
@@ -550,6 +544,7 @@ void main_screen_deinit(void)
     four_g_logo_obj = NULL;
     cellular_icon = NULL;
     battery_icon = NULL;
+    battery_label = NULL;
 
     // Reset menu system variables
     selected_menu_button = 0;
@@ -598,6 +593,13 @@ static lv_obj_t* simple_status_bar_create(lv_obj_t *parent)
     cellular_icon = lv_img_create(status_bar);
     lv_obj_set_size(cellular_icon, 24, 24);
     lv_obj_align(cellular_icon, LV_ALIGN_LEFT_MID, 55, 0);
+
+    // Battery info label (voltage and percentage)
+    battery_label = lv_label_create(status_bar);
+    lv_obj_set_style_text_font(battery_label, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(battery_label, lv_color_black(), 0);
+    lv_obj_align(battery_label, LV_ALIGN_RIGHT_MID, -35, 0);
+    lv_label_set_text(battery_label, "4.2V 100%");
 
     // Battery icon (image widget)
     battery_icon = lv_img_create(status_bar);
@@ -952,6 +954,8 @@ void simple_demo_set_battery_status(uint8_t level, bool charging)
             lv_img_set_src(battery_icon, icon);
         }
     }
+    // Update battery info label as well
+    update_battery_info();
 }
 
 // Status bar icon helper functions
@@ -1039,6 +1043,36 @@ static void update_status_bar_icons(void)
         const lv_img_dsc_t* battery_img = get_battery_icon_by_level(current_battery_level, current_battery_charging);
         if (battery_img) lv_img_set_src(battery_icon, battery_img);
     }
+
+    // Update battery info
+    update_battery_info();
+}
+
+static void update_battery_info(void)
+{
+    if (battery_label == NULL) {
+        return;
+    }
+
+#if defined(ENABLE_LVGL_HARDWARE)
+    // Get real battery voltage (in mV) and percentage from AXP2101
+    uint16_t voltage_mv = axp2101_getBattVoltage();
+    int battery_percent = axp2101_getBatteryPercent();
+    
+    // Update label text with real values
+    lv_label_set_text_fmt(battery_label, "%d mV %d %%", voltage_mv, battery_percent);
+#else
+    // Fallback to demo values when hardware is not available
+    // Convert current_battery_level (0-6) to percentage and voltage
+    int demo_percent = current_battery_level * 100 / 6;
+    float demo_voltage = 3.0f + (current_battery_level * 1.2f / 6);  // 3.0V to 4.2V range
+    
+    if (current_battery_charging) {
+        lv_label_set_text_fmt(battery_label, "%.1fV %d%% CHG", demo_voltage, demo_percent);
+    } else {
+        lv_label_set_text_fmt(battery_label, "%.1fV %d%%", demo_voltage, demo_percent);
+    }
+#endif
 }
 
 // Pet animation functions
@@ -1374,7 +1408,6 @@ static lv_obj_t* create_bottom_menu(lv_obj_t *parent)
     }
 
     // Initialize first button as selected like menu_system.c
-    current_selected_button = main_screen_state.selected_menu_button; // Restore from saved state
     update_menu_button_selection(0, current_selected_button);
 
     return bottom_container;
@@ -1421,7 +1454,6 @@ static void handle_main_navigation(uint32_t key)
     if (new_selection != old_selection) {
         update_menu_button_selection(old_selection, new_selection);
         current_selected_button = new_selection;
-        main_screen_state.selected_menu_button = new_selection; // Save state
         printf("[%s] Menu navigation: %d -> %d\n", main_screen.name, old_selection, new_selection);
     }
 }
