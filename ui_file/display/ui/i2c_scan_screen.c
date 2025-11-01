@@ -198,6 +198,8 @@ static void create_scan_matrix(void)
     lv_obj_set_style_pad_gap(content_container, 0, 0);
 
     // Create matrix of 128 addresses (0x00 - 0x7F)
+    uint8_t i2c_addr = 0;
+    uint8_t dev_num = 0;
     for (int row = 0; row < 8; row++) {
         lv_obj_t *row_container = lv_obj_create(content_container);
         lv_obj_set_size(row_container, LV_PCT(100), 16);
@@ -216,22 +218,29 @@ static void create_scan_matrix(void)
         // Add cells for each column
         for (int col = 0; col < 16; col++) {
             lv_obj_t *cell = lv_label_create(row_container);
-            uint8_t addr = row * 16 + col;
+            uint8_t addr = (row << 4) | col;
             char addr_text[4];
 
             // For valid I2C address range, test device presence
             if (addr <= 0x7F) {
 #ifdef ENABLE_LVGL_HARDWARE
-                uint8_t i2c_addr = addr;
+                i2c_addr = addr;
                 uint8_t data_buf[1] = {0};
 
                 if (OPRT_OK == tkl_i2c_master_send(current_port_index, i2c_addr, data_buf, 0, TRUE)) {
-                    // Device found - display address in green
-                    snprintf(addr_text, sizeof(addr_text), "%02X", addr);
-                    lv_label_set_text(cell, addr_text);
-                    lv_obj_set_style_bg_color(cell, lv_color_white(), 0);
-                    lv_obj_set_style_text_color(cell, lv_color_black(), 0);
-                    printf("I2C device found at 0x%02X\n", addr);
+                    dev_num++;
+                    if (dev_num >= i2c_addr) {
+                        lv_label_set_text(cell, "");
+                        continue;
+                    }
+                    if (i2c_addr <= 0x7F) {
+                        snprintf(addr_text, sizeof(addr_text), "%02X", i2c_addr);
+                        PR_DEBUG("Found I2C device at address %s", addr_text);
+                        lv_label_set_text(cell, addr_text);
+                    }
+                    else {
+                        lv_label_set_text(cell, "");
+                    }
                 } else {
                     // No device - display placeholder
                     lv_label_set_text(cell, "");
