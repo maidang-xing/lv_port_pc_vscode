@@ -13,6 +13,7 @@ static lv_obj_t *ui_menu_sleep_screen_screen;
 static lv_obj_t *menu_sleep_screen_list;
 static lv_timer_t *timer;
 static uint8_t selected_item = 0;
+static int last_selected_item = -1;
 static sleep_status_t current_sleep_status = {false, 80, 8, 22};
 // static sleep_event_callback_t sleep_callback = NULL;
 // static void *sleep_callback_user_data = NULL;
@@ -49,6 +50,7 @@ static void create_separator(void);
 static void create_sleep_actions(void);
 static void update_selection(uint8_t old_selection, uint8_t new_selection);
 static void handle_sleep_selection(void);
+static bool is_child_selectable(lv_obj_t *child);
 
 static void menu_sleep_screen_timer_cb(lv_timer_t *timer)
 {
@@ -65,16 +67,30 @@ static void keyboard_event_cb(lv_event_t *e)
     uint8_t new_selection = old_selection;
 
     switch (key) {
-        case KEY_UP:
-            if (selected_item > 0) new_selection = selected_item - 1;
-            break;
-        case KEY_DOWN:
-            if (selected_item < child_count - 1) new_selection = selected_item + 1;
-            break;
+        case KEY_UP: {
+            for (int i = (int)selected_item - 1; i >= 0; --i) {
+                lv_obj_t *ch = lv_obj_get_child(menu_sleep_screen_list, i);
+                if (is_child_selectable(ch)) {
+                    new_selection = i;
+                    break;
+                }
+            }
+        } break;
+        case KEY_DOWN: {
+            for (int i = (int)selected_item + 1; i < (int)child_count; ++i) {
+                lv_obj_t *ch = lv_obj_get_child(menu_sleep_screen_list, i);
+                if (is_child_selectable(ch)) {
+                    new_selection = i;
+                    break;
+                }
+            }
+        } break;
         case KEY_ENTER:
+            last_selected_item = selected_item;
             handle_sleep_selection();
             break;
         case KEY_ESC:
+            last_selected_item = -1;
             screen_back();
             break;
     }
@@ -90,6 +106,9 @@ static void create_sleep_status_display(void)
     lv_obj_t *status_title = lv_label_create(menu_sleep_screen_list);
     lv_label_set_text(status_title, "Sleep Status:");
     lv_obj_set_style_text_font(status_title, &lv_font_montserrat_14, 0);
+    /* Ensure title is not focusable/selectable */
+    lv_obj_add_flag(status_title, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(status_title, LV_OBJ_FLAG_CLICK_FOCUSABLE);
 
     // Sleep state
     // lv_obj_t *btn = lv_list_add_btn(menu_sleep_screen_list, LV_SYMBOL_HOME,
@@ -112,6 +131,9 @@ static void create_separator(void)
     lv_obj_set_size(separator, 320, 2);
     lv_obj_set_style_bg_color(separator, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(separator, LV_OPA_50, 0);
+    /* Make separator non-selectable */
+    lv_obj_add_flag(separator, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(separator, LV_OBJ_FLAG_CLICK_FOCUSABLE);
 }
 
 static void create_sleep_actions(void)
@@ -119,30 +141,51 @@ static void create_sleep_actions(void)
     lv_obj_t *actions_title = lv_label_create(menu_sleep_screen_list);
     lv_label_set_text(actions_title, "Sleep Actions:");
     lv_obj_set_style_text_font(actions_title, &lv_font_montserrat_14, 0);
+    /* Ensure actions title is not selectable */
+    lv_obj_add_flag(actions_title, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(actions_title, LV_OBJ_FLAG_CLICK_FOCUSABLE);
 
     for (uint8_t i = 0; i < SLEEP_ACTIONS_COUNT; i++) {
-        lv_list_add_btn(menu_sleep_screen_list, sleep_actions[i].icon, sleep_actions[i].name);
+        lv_obj_t *btn = lv_list_add_btn(menu_sleep_screen_list, sleep_actions[i].icon, sleep_actions[i].name);
+        /* Make sure action buttons are focusable/selectable */
+        lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICK_FOCUSABLE);
     }
 }
 
 static void update_selection(uint8_t old_selection, uint8_t new_selection)
 {
     uint32_t child_count = lv_obj_get_child_cnt(menu_sleep_screen_list);
-
+    // Un-highlight nearest selectable old child
     if (old_selection < child_count) {
-        lv_obj_set_style_bg_color(lv_obj_get_child(menu_sleep_screen_list, old_selection), lv_color_white(), 0);
-        lv_obj_set_style_text_color(lv_obj_get_child(menu_sleep_screen_list, old_selection), lv_color_black(), 0);
+        for (int i = old_selection; i >= 0; --i) {
+            lv_obj_t *ch = lv_obj_get_child(menu_sleep_screen_list, i);
+            if (is_child_selectable(ch)) {
+                lv_obj_set_style_bg_color(ch, lv_color_white(), 0);
+                lv_obj_set_style_text_color(ch, lv_color_black(), 0);
+                break;
+            }
+        }
     }
 
+    // Highlight nearest selectable new child
     if (new_selection < child_count) {
-        lv_obj_set_style_bg_color(lv_obj_get_child(menu_sleep_screen_list, new_selection), lv_color_black(), 0);
-        lv_obj_set_style_text_color(lv_obj_get_child(menu_sleep_screen_list, new_selection), lv_color_white(), 0);
-        lv_obj_scroll_to_view(lv_obj_get_child(menu_sleep_screen_list, new_selection), LV_ANIM_ON);
+        for (uint32_t i = new_selection; i < child_count; ++i) {
+            lv_obj_t *ch = lv_obj_get_child(menu_sleep_screen_list, i);
+            if (is_child_selectable(ch)) {
+                lv_obj_set_style_bg_color(ch, lv_color_black(), 0);
+                lv_obj_set_style_text_color(ch, lv_color_white(), 0);
+                lv_obj_scroll_to_view(ch, LV_ANIM_ON);
+                break;
+            }
+        }
     }
 }
 
 static void handle_sleep_selection(void)
 {
+    last_selected_item = selected_item;
+    
     printf("Sleep action selected at index %d\n", selected_item);
     // if (sleep_callback) {
     //     sleep_callback(SLEEP_ACTION_SLEEP, sleep_callback_user_data);
@@ -170,15 +213,34 @@ void menu_sleep_screen_init(void)
     create_separator();
     create_sleep_actions();
 
+    uint32_t child_count = lv_obj_get_child_cnt(menu_sleep_screen_list);
     selected_item = 0;
-    if (lv_obj_get_child_cnt(menu_sleep_screen_list) > 0) {
-        update_selection(0, 0);
+    if (child_count > 0) {
+        if (last_selected_item >= 0 && (uint32_t)last_selected_item < child_count) {
+            selected_item = (uint8_t)last_selected_item;
+            update_selection(0, selected_item);
+        } else {
+            for (uint32_t i = 0; i < child_count; ++i) {
+                lv_obj_t *ch = lv_obj_get_child(menu_sleep_screen_list, i);
+                if (is_child_selectable(ch)) {
+                    selected_item = (uint8_t)i;
+                    update_selection(0, selected_item);
+                    break;
+                }
+            }
+        }
     }
 
     timer = lv_timer_create(menu_sleep_screen_timer_cb, 1000, NULL);
     lv_obj_add_event_cb(ui_menu_sleep_screen_screen, keyboard_event_cb, LV_EVENT_KEY, NULL);
     lv_group_add_obj(lv_group_get_default(), ui_menu_sleep_screen_screen);
     lv_group_focus_obj(ui_menu_sleep_screen_screen);
+}
+
+static bool is_child_selectable(lv_obj_t *child)
+{
+    if (!child) return false;
+    return lv_obj_has_flag(child, LV_OBJ_FLAG_CLICK_FOCUSABLE);
 }
 
 void menu_sleep_screen_deinit(void)

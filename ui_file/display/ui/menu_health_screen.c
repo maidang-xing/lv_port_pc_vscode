@@ -28,6 +28,8 @@ static lv_obj_t *ui_menu_health_screen_screen;
 static lv_obj_t *menu_health_screen_list;
 static lv_timer_t *timer;
 static uint8_t selected_item = 0;
+// Remember last selected actionable item for this menu (-1 = none)
+static int last_selected_item = -1;
 static health_status_t current_health_status;
 static health_event_callback_t health_callback = NULL;
 static void *health_callback_user_data = NULL;
@@ -78,6 +80,7 @@ static void create_stat_icon_bar(const char *label, int value);
 static void create_stat_display_item(const char *label, const char *value);
 static void update_selection(uint8_t old_selection, uint8_t new_selection);
 static void handle_health_selection(void);
+static bool is_child_selectable(lv_obj_t *child);
 
 /***********************************************************
 ***********************function define**********************
@@ -116,20 +119,32 @@ static void keyboard_event_cb(lv_event_t *e)
     uint8_t new_selection = old_selection;
 
     switch (key) {
-        case KEY_UP:
-            if (selected_item > 0) {
-                new_selection = selected_item - 1;
+        case KEY_UP: {
+            for (int i = (int)selected_item - 1; i >= 0; --i) {
+                lv_obj_t *ch = lv_obj_get_child(menu_health_screen_list, i);
+                if (is_child_selectable(ch)) {
+                    new_selection = i;
+                    break;
+                }
             }
-            break;
-        case KEY_DOWN:
-            if (selected_item < child_count - 1) {
-                new_selection = selected_item + 1;
+        } break;
+        case KEY_DOWN: {
+            for (int i = (int)selected_item + 1; i < (int)child_count; ++i) {
+                lv_obj_t *ch = lv_obj_get_child(menu_health_screen_list, i);
+                if (is_child_selectable(ch)) {
+                    new_selection = i;
+                    break;
+                }
             }
-            break;
+        } break;
         case KEY_ENTER:
+            /* save last actionable selection */
+            last_selected_item = selected_item;
             handle_health_selection();
             break;
         case KEY_ESC:
+            /* clear remembered selection on explicit ESC */
+            last_selected_item = -1;
             printf("ESC key pressed - returning to main menu\n");
             screen_back();
             break;
@@ -304,17 +319,39 @@ static void create_stat_display_item(const char *label, const char *value)
 static void update_selection(uint8_t old_selection, uint8_t new_selection)
 {
     uint32_t child_count = lv_obj_get_child_cnt(menu_health_screen_list);
-
+    // Un-highlight nearest selectable old child
     if (old_selection < child_count) {
-        lv_obj_set_style_bg_color(lv_obj_get_child(menu_health_screen_list, old_selection), lv_color_white(), 0);
-        lv_obj_set_style_text_color(lv_obj_get_child(menu_health_screen_list, old_selection), lv_color_black(), 0);
+        for (int i = old_selection; i >= 0; --i) {
+            lv_obj_t *ch = lv_obj_get_child(menu_health_screen_list, i);
+            if (is_child_selectable(ch)) {
+                lv_obj_set_style_bg_color(ch, lv_color_white(), 0);
+                lv_obj_set_style_text_color(ch, lv_color_black(), 0);
+                break;
+            }
+        }
     }
 
+    // Highlight nearest selectable new child
     if (new_selection < child_count) {
-        lv_obj_set_style_bg_color(lv_obj_get_child(menu_health_screen_list, new_selection), lv_color_black(), 0);
-        lv_obj_set_style_text_color(lv_obj_get_child(menu_health_screen_list, new_selection), lv_color_white(), 0);
-        lv_obj_scroll_to_view(lv_obj_get_child(menu_health_screen_list, new_selection), LV_ANIM_ON);
+        for (uint32_t i = new_selection; i < child_count; ++i) {
+            lv_obj_t *ch = lv_obj_get_child(menu_health_screen_list, i);
+            if (is_child_selectable(ch)) {
+                lv_obj_set_style_bg_color(ch, lv_color_black(), 0);
+                lv_obj_set_style_text_color(ch, lv_color_white(), 0);
+                lv_obj_scroll_to_view(ch, LV_ANIM_ON);
+                break;
+            }
+        }
     }
+}
+
+/**
+ * @brief Return true if child is actionable/selectable (click-focusable)
+ */
+static bool is_child_selectable(lv_obj_t *child)
+{
+    if (!child) return false;
+    return lv_obj_has_flag(child, LV_OBJ_FLAG_CLICK_FOCUSABLE);
 }
 
 /**
@@ -431,10 +468,24 @@ void menu_health_screen_init(void)
     create_separator();
     create_health_actions();
 
-    // Highlight first item
+    // Restore last actionable selection if available, otherwise highlight first selectable child
+    uint32_t child_count = lv_obj_get_child_cnt(menu_health_screen_list);
     selected_item = 0;
-    if (lv_obj_get_child_cnt(menu_health_screen_list) > 0) {
-        update_selection(0, 0);
+    if (child_count > 0) {
+        if (last_selected_item >= 0 && (uint32_t)last_selected_item < child_count) {
+            selected_item = (uint8_t)last_selected_item;
+            update_selection(0, selected_item);
+        } else {
+            // find first selectable child
+            for (uint32_t i = 0; i < child_count; ++i) {
+                lv_obj_t *ch = lv_obj_get_child(menu_health_screen_list, i);
+                if (is_child_selectable(ch)) {
+                    selected_item = (uint8_t)i;
+                    update_selection(0, selected_item);
+                    break;
+                }
+            }
+        }
     }
 
     timer = lv_timer_create(menu_health_screen_timer_cb, 1000, NULL);

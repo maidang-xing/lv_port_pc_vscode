@@ -142,12 +142,17 @@ void screen_back_bottom(void) {
     }
 
     // Pop all screens except the bottom one
-    while(screen_stack.top > 1)
+    while(screen_stack.top > 1){
+        printf("[%s] pop screen\n", screen_stack.screens[screen_stack.top - 1]->name);
         screen_stack_pop(&screen_stack);
+    }
+
+    printf("[%s] Load home screen\n", screen_stack.screens[screen_stack.top - 1]->name);
     screen_stack.screens[screen_stack.top - 1]->init(); // Initialize new screen
 
     // Check if screen object is valid before loading
     Screen_t *bottom_screen = screen_stack.screens[screen_stack.top - 1];
+    printf("[%s] bottom screen: %s\n", bottom_screen->name, bottom_screen->name);
     if (bottom_screen->screen_obj && *bottom_screen->screen_obj) {
         printf("[%s] Returning to home screen: %s\n", bottom_screen->name, bottom_screen->name);
         lv_scr_load_anim(*bottom_screen->screen_obj, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 100, 0, true); // Load and apply animation

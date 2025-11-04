@@ -524,13 +524,9 @@ void main_screen_deinit(void)
     // Remove event callback and delete the main screen object
     if (ui_main_screen) {
         // Remove from group before deleting
-        lv_group_t *group = lv_group_get_default();
-        if (group) {
-            lv_group_remove_obj(ui_main_screen);
-        }
-
-        lv_obj_remove_event_cb(ui_main_screen, keyboard_event_cb);
-
+        lv_obj_remove_event_cb(ui_main_screen, keyboard_event_cb);   // Remove event callback
+        lv_group_remove_obj(ui_main_screen);                         // Remove from group
+        printf("deinit main screen\n");
         // Delete the main screen object
         // lv_obj_del(ui_main_screen);
         // ui_main_screen = NULL;
@@ -603,7 +599,7 @@ static lv_obj_t* simple_status_bar_create(lv_obj_t *parent)
     lv_obj_set_style_text_font(battery_label, &lv_font_montserrat_10, 0);
     lv_obj_set_style_text_color(battery_label, lv_color_black(), 0);
     lv_obj_align(battery_label, LV_ALIGN_RIGHT_MID, -35, 0);
-    lv_label_set_text(battery_label, "4.2V 100%");
+    // lv_label_set_text(battery_label, "4.2V 100%");
 
     // Battery icon (image widget)
     battery_icon = lv_img_create(status_bar);
@@ -644,7 +640,7 @@ static lv_obj_t* simple_pet_area_create(lv_obj_t *parent)
     lv_obj_set_style_border_width(gif_container, 0, 0);
     lv_obj_set_style_pad_all(gif_container, 0, 0);
     lv_obj_clear_flag(gif_container, LV_OBJ_FLAG_SCROLLABLE);
-    
+
     // Ensure GIF container has highest priority (always on top)
     lv_obj_move_foreground(gif_container);
 
@@ -729,17 +725,17 @@ static void create_gif_widget(const lv_img_dsc_t* gif_src)
     lv_obj_set_size(next_gif_widget, 159, 164);
     lv_obj_align(next_gif_widget, LV_ALIGN_CENTER, 0, 0);
     lv_obj_clear_flag(next_gif_widget, LV_OBJ_FLAG_SCROLLABLE);
-    
+
     // Use transparent background to not interfere with black line
     lv_obj_set_style_bg_opa(next_gif_widget, LV_OPA_TRANSP, 0);
     lv_obj_set_style_opa(next_gif_widget, LV_OPA_COVER, 0);        // Full visibility for GIF content
-    
+
     // Ensure GIF is always on top but doesn't block underlying elements
     lv_obj_move_foreground(next_gif_widget);
-    
+
     // Set the GIF source immediately
     lv_gif_set_src(next_gif_widget, gif_src);
-    
+
     // Minimal processing to initialize GIF quickly
     lv_refr_now(NULL);
     for(int i = 0; i < 2; i++) {
@@ -752,13 +748,13 @@ static void create_gif_widget(const lv_img_dsc_t* gif_src)
         lv_obj_set_style_opa(current_gif_widget, LV_OPA_TRANSP, 0);
         lv_obj_del(current_gif_widget);
     }
-    
+
     // Ensure new GIF maintains foreground position without blocking
     lv_obj_move_foreground(next_gif_widget);
-    
+
     // Force refresh to show new GIF immediately
     lv_refr_now(NULL);
-    
+
     // Atomic pointer swap
     current_gif_widget = next_gif_widget;
     next_gif_widget = NULL;
@@ -1095,11 +1091,11 @@ static void update_battery_info(void)
         return;  // Skip update if not enough time has passed
     }
     last_battery_update = current_time;
-    
+
     // Get real battery voltage (in mV) and percentage from AXP2101
     uint16_t voltage_mv = axp2101_getBattVoltage();
     int battery_percent = axp2101_getBatteryPercent();
-    
+
     // Update label text with real values
     lv_label_set_text_fmt(battery_label, "%d mV %d %%", voltage_mv, battery_percent);
 #else
@@ -1107,7 +1103,7 @@ static void update_battery_info(void)
     // Convert current_battery_level (0-6) to percentage and voltage
     int demo_percent = current_battery_level * 100 / 6;
     float demo_voltage = 3.0f + (current_battery_level * 1.2f / 6);  // 3.0V to 4.2V range
-    
+
     if (current_battery_charging) {
         lv_label_set_text_fmt(battery_label, "%.1fV %d%% CHG", demo_voltage, demo_percent);
     } else {
@@ -1217,7 +1213,7 @@ static void switch_to_special_animation(ai_pet_state_t state)
 {
     // Get the appropriate GIF source for this state
     const lv_img_dsc_t* gif_src = get_gif_src_by_state(state, false, 1, 0);
-    
+
     if (gif_src == NULL) {
         return; // Invalid state, stay in current animation
     }
@@ -1233,7 +1229,7 @@ static void switch_to_normal_animation(void)
 {
     // Switch to appropriate normal animation based on current state
     const lv_img_dsc_t* gif_src = get_gif_src_by_state(AI_PET_STATE_NORMAL, pet_is_walking, pet_direction, idle_animation_state);
-    
+
     // Switch to the new GIF
     switch_to_gif(gif_src);
 
