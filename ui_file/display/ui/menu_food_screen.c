@@ -101,7 +101,7 @@ static void pet_state_timer_cb(lv_timer_t *timer)
     printf("[%s] eat animation timer callback - switching to normal state\n", menu_food_screen.name);
 
     // Switch pet back to normal state
-    simple_pet_area_set_animation(AI_PET_STATE_NORMAL);
+    main_screen_set_pet_animation_state(AI_PET_STATE_NORMAL);
 
     // Clean up the timer
     if (pet_state_timer) {
@@ -146,7 +146,6 @@ static void keyboard_event_cb(lv_event_t *e)
             printf("ESC key pressed - returning to main menu\n");
             last_selected_item = 0;
             screen_back();
-            break;
             break;
         default:
             printf("Key %d pressed\n", key);
@@ -242,7 +241,7 @@ static void handle_food_selection(void)
                 // Return to main screen and play eating animation
                 screen_back();
                 // Trigger eating animation on main screen
-                simple_pet_area_set_animation(AI_PET_STATE_EAT);
+                main_screen_set_pet_animation_state(AI_PET_STATE_EAT);
 
                 // Start timer to switch back to normal state after 3 seconds
                 if (pet_state_timer) {
@@ -250,6 +249,7 @@ static void handle_food_selection(void)
                 }
                 pet_state_timer = lv_timer_create(pet_state_timer_cb, 2000, NULL);
                 // lv_timer_set_repeat_count(pet_state_timer, 1);  // Run only once
+
                 printf("Started eat animation timer for 3 seconds\n");
             } else {
                 printf("Hamburger not available (requires level %d)\n", selected_food->required_level);
@@ -259,7 +259,25 @@ static void handle_food_selection(void)
 
         case 1:  // Drink Water
             printf("Water selected - showing toast\n");
-            toast_screen_show("Coming Soon: Drink Water Feature", 2000);
+            if (selected_food->available) {
+                printf("Feeding water - returning to main screen and playing drink animation\n");
+                // Return to main screen and play drinking animation
+                screen_back();
+                // Trigger drinking animation on main screen
+                main_screen_set_pet_animation_state(AI_PET_STATE_DANCE);
+
+                // Start timer to switch back to normal state after 3 seconds
+                if (pet_state_timer) {
+                    lv_timer_del(pet_state_timer);  // Clean up existing timer
+                }
+                pet_state_timer = lv_timer_create(pet_state_timer_cb, 2000, NULL);
+                // lv_timer_set_repeat_count(pet_state_timer, 1);  // Run only once
+
+                printf("Started eat animation timer for 3 seconds\n");
+            } else {
+                printf("Hamburger not available (requires level %d)\n", selected_food->required_level);
+                toast_screen_show("Unlock at Higher Level", 2000);
+            }
             break;
 
         case 2:  // Feed Pizza

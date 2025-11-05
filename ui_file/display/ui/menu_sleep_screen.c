@@ -5,6 +5,8 @@
 
 #include "menu_sleep_screen.h"
 #include "screen_manager.h"
+#include "main_screen.h"
+#include "toast_screen.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -12,6 +14,7 @@
 static lv_obj_t *ui_menu_sleep_screen_screen;
 static lv_obj_t *menu_sleep_screen_list;
 static lv_timer_t *timer;
+static lv_timer_t *pet_state_timer;  // Timer for animation
 static uint8_t selected_item = 0;
 static int last_selected_item = -1;
 static sleep_status_t current_sleep_status = {false, 80, 8, 22};
@@ -57,6 +60,27 @@ static void menu_sleep_screen_timer_cb(lv_timer_t *timer)
     printf("[%s] sleep menu timer callback\n", menu_sleep_screen.name);
 }
 
+/**
+ * @brief Timer callback for animation
+ *
+ * This function is called after animation to switch back to normal state.
+ *
+ * @param timer The timer object
+ */
+static void pet_state_timer_cb(lv_timer_t *timer)
+{
+    printf("[%s] animation timer callback - switching to normal state\n", menu_sleep_screen.name);
+
+    // Switch pet back to normal state
+    main_screen_set_pet_animation_state(AI_PET_STATE_NORMAL);
+
+    // Clean up the timer
+    if (pet_state_timer) {
+        lv_timer_del(pet_state_timer);
+        pet_state_timer = NULL;
+    }
+}
+
 static void keyboard_event_cb(lv_event_t *e)
 {
     uint32_t key = lv_event_get_key(e);
@@ -86,11 +110,10 @@ static void keyboard_event_cb(lv_event_t *e)
             }
         } break;
         case KEY_ENTER:
-            last_selected_item = selected_item;
             handle_sleep_selection();
             break;
         case KEY_ESC:
-            last_selected_item = -1;
+            last_selected_item = 0;
             screen_back();
             break;
     }
@@ -150,6 +173,31 @@ static void create_sleep_actions(void)
         /* Make sure action buttons are focusable/selectable */
         lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICK_FOCUSABLE);
+
+        // Add status info on the right side
+        lv_obj_t *info_label = lv_label_create(btn);
+        char info_text[32];
+        switch (i) {
+            case 0:  // Sleep
+                snprintf(info_text, sizeof(info_text), "Rest");
+                break;
+            case 1:  // Wake Up
+                snprintf(info_text, sizeof(info_text), "E:+50");
+                break;
+            case 2:  // Set Bedtime
+                snprintf(info_text, sizeof(info_text), "Settings");
+                break;
+            case 3:  // Sleep Status
+                snprintf(info_text, sizeof(info_text), "Info");
+                break;
+            default:
+                snprintf(info_text, sizeof(info_text), " ");
+                break;
+        }
+        lv_label_set_text(info_label, info_text);
+        lv_obj_align(info_label, LV_ALIGN_RIGHT_MID, -5, 0);
+        lv_obj_set_style_text_color(info_label, lv_color_make(0, 128, 0), 0);
+        lv_obj_set_style_text_font(info_label, &lv_font_montserrat_10, 0);
     }
 }
 
@@ -184,12 +232,73 @@ static void update_selection(uint8_t old_selection, uint8_t new_selection)
 
 static void handle_sleep_selection(void)
 {
+    uint32_t child_count = lv_obj_get_child_cnt(menu_sleep_screen_list);
+
+    // Find action items start (after status displays and separator)
+    uint32_t action_start = 0;
+    for (uint32_t i = 0; i < child_count; i++) {
+        lv_obj_t *child = lv_obj_get_child(menu_sleep_screen_list, i);
+        if (lv_obj_check_type(child, &lv_label_class)) {
+            const char *text = lv_label_get_text(child);
+            if (strcmp(text, "Sleep Actions:") == 0) {
+                action_start = i + 1;
+                break;
+            }
+        }
+    }
+
+    if (selected_item >= action_start) {
+        uint32_t action_index = selected_item - action_start;
+
+        if (action_index < SLEEP_ACTIONS_COUNT) {
+            sleep_action_item_t *selected_action = &sleep_actions[action_index];
+
+            printf("Selected sleep action: %s - %s\n",
+                   selected_action->name, selected_action->description);
+
+            // Handle different sleep actions with specific logic
+            switch (action_index) {
+                case 0:  // Sleep - only this one has animation
+                    printf("Sleep - returning to main screen and playing animation\n");
+                    current_sleep_status.is_sleeping = true;
+
+                    // Return to main screen and play sleep animation
+                    screen_back();
+                    main_screen_set_pet_animation_state(AI_PET_STATE_SLEEP);
+
+                    // Start timer to switch back to normal state after 2 seconds
+                    if (pet_state_timer) {
+                        lv_timer_del(pet_state_timer);  // Clean up existing timer
+                    }
+                    pet_state_timer = lv_timer_create(pet_state_timer_cb, 2000, NULL);
+
+                    printf("Started sleep animation timer\n");
+                    break;
+
+                case 1:  // Wake Up
+                    printf("Wake Up selected - showing toast\n");
+                    toast_screen_show("Coming Soon: Wake Up Feature", 2000);
+                    break;
+
+                case 2:  // Set Bedtime
+                    printf("Set Bedtime selected - showing toast\n");
+                    toast_screen_show("Coming Soon: Set Bedtime Feature", 2000);
+                    break;
+
+                case 3:  // Sleep Status
+                    printf("Sleep Status selected - showing toast\n");
+                    toast_screen_show("Coming Soon: Sleep Status Feature", 2000);
+                    break;
+
+                default:
+                    printf("Unknown sleep action: %d\n", action_index);
+                    toast_screen_show("Unknown Action", 2000);
+                    break;
+            }
+        }
+    }
+
     last_selected_item = selected_item;
-    
-    printf("Sleep action selected at index %d\n", selected_item);
-    // if (sleep_callback) {
-    //     sleep_callback(SLEEP_ACTION_SLEEP, sleep_callback_user_data);
-    // }
 }
 
 void menu_sleep_screen_init(void)
@@ -206,6 +315,9 @@ void menu_sleep_screen_init(void)
     menu_sleep_screen_list = lv_list_create(ui_menu_sleep_screen_screen);
     lv_obj_set_size(menu_sleep_screen_list, 364, 128);
     lv_obj_align(menu_sleep_screen_list, LV_ALIGN_TOP_MID, 0, 40);
+    lv_obj_add_flag(menu_sleep_screen_list, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(menu_sleep_screen_list, LV_DIR_VER);
+
     lv_obj_set_style_border_color(menu_sleep_screen_list, lv_color_black(), 0);
     lv_obj_set_style_border_width(menu_sleep_screen_list, 2, 0);
 
@@ -213,21 +325,38 @@ void menu_sleep_screen_init(void)
     create_separator();
     create_sleep_actions();
 
+    // Restore last selected item or find first selectable child
     uint32_t child_count = lv_obj_get_child_cnt(menu_sleep_screen_list);
-    selected_item = 0;
+    if (last_selected_item >= 0 && (uint32_t)last_selected_item < child_count) {
+        selected_item = (uint8_t)last_selected_item;
+    } else {
+        selected_item = 0;
+        last_selected_item = 0;
+    }
+
+    // Validate selected_item is within bounds and selectable
+    bool found_selectable = false;
     if (child_count > 0) {
-        if (last_selected_item >= 0 && (uint32_t)last_selected_item < child_count) {
-            selected_item = (uint8_t)last_selected_item;
-            update_selection(0, selected_item);
-        } else {
+        if (selected_item > 0 && selected_item < child_count) {
+            lv_obj_t *current_child = lv_obj_get_child(menu_sleep_screen_list, selected_item);
+            if (is_child_selectable(current_child)) {
+                found_selectable = true;
+            }
+        }
+
+        if (!found_selectable) {
             for (uint32_t i = 0; i < child_count; ++i) {
                 lv_obj_t *ch = lv_obj_get_child(menu_sleep_screen_list, i);
                 if (is_child_selectable(ch)) {
                     selected_item = (uint8_t)i;
-                    update_selection(0, selected_item);
+                    found_selectable = true;
                     break;
                 }
             }
+        }
+
+        if (found_selectable) {
+            update_selection(0, selected_item);
         }
     }
 
@@ -253,6 +382,10 @@ void menu_sleep_screen_deinit(void)
         lv_timer_del(timer);
         timer = NULL;
     }
+    if (pet_state_timer) {
+        lv_timer_del(pet_state_timer);
+        pet_state_timer = NULL;
+    }
 }
 
 void menu_sleep_screen_set_sleep_status(sleep_status_t *status)
@@ -264,4 +397,3 @@ sleep_status_t* menu_sleep_screen_get_sleep_status(void)
 {
     return &current_sleep_status;
 }
-

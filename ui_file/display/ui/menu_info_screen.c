@@ -21,7 +21,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-
+#if defined(ENABLE_LVGL_HARDWARE)
+#include "ai_audio.h"
+#include "tal_kv.h"
+#endif
 /***********************************************************
 ***********************variable define**********************
 ***********************************************************/
@@ -40,6 +43,9 @@ static pet_stats_t current_pet_stats = {
 };
 static uint8_t selected_item = 0;
 static uint8_t last_selected_item = 0;
+
+// KV storage key for pet name
+#define PET_NAME_KV_KEY "pet_name"
 
 // UI Constants
 #define STAT_CONTAINER_HEIGHT 30
@@ -149,7 +155,7 @@ static void keyboard_event_cb(lv_event_t *e)
             break;
         case KEY_ESC:
             printf("ESC key pressed - returning to main menu\n");
-            last_selected_item = selected_item;
+            last_selected_item = 0;
             screen_back();
             break;
         default:
@@ -356,7 +362,12 @@ static void handle_action_selection(void)
                 break;
             case 1: // View Statistics
                 printf("View Statistics action selected\n");
-                toast_screen_show("Unlock at Higher Level", 2000);
+#if defined(ENABLE_LVGL_HARDWARE)
+				uint8_t chat_text[] = "今天发生了什么有趣的事情？";
+                ai_text_agent_upload(chat_text, sizeof(chat_text));
+#else
+				toast_screen_show("Unlock at Higher Level", 2000);
+#endif
                 break;
             case 2: // WIFI Settings
                 printf("WIFI Settings action selected\n");
@@ -435,6 +446,18 @@ static void keyboard_callback(const char *text, void *user_data)
         current_pet_stats.name[sizeof(current_pet_stats.name) - 1] = '\0';
         printf("Pet name updated to: '%s' (length: %zu)\n", current_pet_stats.name, strlen(current_pet_stats.name));
 
+#if defined(ENABLE_LVGL_HARDWARE)
+        // Save pet name to KV storage
+        int ret = tal_kv_set(PET_NAME_KV_KEY, (const uint8_t *)current_pet_stats.name, strlen(current_pet_stats.name) + 1);
+        if (ret == 0) {
+            printf("Pet name saved to KV storage successfully\n");
+        } else {
+            printf("Failed to save pet name to KV storage, error: %d\n", ret);
+        }
+#else
+        printf("KV storage not available (PC simulator mode)\n");
+#endif
+
         // Create a timer to refresh the screen after a short delay
         // This ensures the screen_back() has completed before we refresh
         lv_timer_t *refresh_timer = lv_timer_create(refresh_info_screen_timer_cb, 200, NULL);
@@ -463,16 +486,30 @@ static void show_keyboard_for_pet_name(void)
  */
 void menu_info_screen_init(void)
 {
-    // Initialize pet stats if not already set
-    // if (strlen(current_pet_stats.name) == 0) {
-    //     current_pet_stats.health = 85;
-    //     current_pet_stats.hungry = 60;
-    //     current_pet_stats.clean = 70;
-    //     current_pet_stats.happy = 90;
-    //     current_pet_stats.age_days = 15;
-    //     current_pet_stats.weight_kg = 1.2f;
-    //     strcpy(current_pet_stats.name, "Ducky");
-    // }
+#if defined(ENABLE_LVGL_HARDWARE)
+    // Try to load pet name from KV storage
+    uint8_t *stored_name = NULL;
+    size_t name_length = 0;
+    int ret = tal_kv_get(PET_NAME_KV_KEY, &stored_name, &name_length);
+
+    if (ret == 0 && stored_name != NULL && name_length > 0) {
+        // Successfully loaded pet name from storage
+        strncpy(current_pet_stats.name, (const char *)stored_name, sizeof(current_pet_stats.name) - 1);
+        current_pet_stats.name[sizeof(current_pet_stats.name) - 1] = '\0';
+        printf("Pet name loaded from KV storage: '%s'\n", current_pet_stats.name);
+
+        // Free the allocated memory
+        tal_kv_free(stored_name);
+    } else {
+        // No stored name found or error occurred, use default
+        printf("No pet name in KV storage (ret=%d), using default name\n", ret);
+        strcpy(current_pet_stats.name, "Ducky");
+    }
+#else
+    // PC simulator mode - use default name
+    strcpy(current_pet_stats.name, "Ducky");
+    printf("PC simulator mode - using default pet name: '%s'\n", current_pet_stats.name);
+#endif
 
     ui_info_menu_screen = lv_obj_create(NULL);
     lv_obj_set_size(ui_info_menu_screen, 384, 168);

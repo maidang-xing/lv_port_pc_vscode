@@ -100,16 +100,6 @@ void screen_back_bottom(void);
 void screen_load(Screen_t *newScreen);
 
 /**
- * @brief Load a new screen to the top of the stack without animation
- *
- * @param newScreen Pointer to the new screen to be loaded
- *
- * This function pushes the current screen onto the stack and loads the specified new screen
- * without any animation effect. Useful for overlays like toast screens.
- */
-void screen_load_no_anim(Screen_t *newScreen);
-
-/**
  * @brief Initialize the screen manager
  *
  * This function initializes the screen stack and loads the startup screen.

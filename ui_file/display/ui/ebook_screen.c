@@ -165,22 +165,22 @@ static int ebook_mount_sdcard(void)
  */
 static int ebook_ensure_directories(void)
 {
-    // OPERATE_RET rt = OPRT_OK;
-    // BOOL_T is_exist = FALSE;
+    OPERATE_RET rt = OPRT_OK;
+    BOOL_T is_exist = FALSE;
 
-    // // Check and create txt directory
-    // rt = tkl_fs_is_exist(EBOOK_TXT_DIR, &is_exist);
-    // if (rt != OPRT_OK || !is_exist) {
-    //     printf("[EBOOK] Creating directory: %s\n", EBOOK_TXT_DIR);
-    //     rt = tkl_fs_mkdir(EBOOK_TXT_DIR);
-    //     if (rt != OPRT_OK) {
-    //         ebook_log_error("ebook_ensure_directories", "Failed to create txt directory", rt);
-    //         return -1;
-    //     }
-    //     printf("[EBOOK] Directory created successfully: %s\n", EBOOK_TXT_DIR);
-    // } else {
-    //     printf("[EBOOK] Directory already exists: %s\n", EBOOK_TXT_DIR);
-    // }
+    // Check and create txt directory
+    rt = tkl_fs_is_exist(EBOOK_TXT_DIR, &is_exist);
+    if (rt != OPRT_OK || !is_exist) {
+        printf("[EBOOK] Creating directory: %s\n", EBOOK_TXT_DIR);
+        rt = tkl_fs_mkdir(EBOOK_TXT_DIR);
+        if (rt != OPRT_OK) {
+            ebook_log_error("ebook_ensure_directories", "Failed to create txt directory", rt);
+            return -1;
+        }
+        printf("[EBOOK] Directory created successfully: %s\n", EBOOK_TXT_DIR);
+    } else {
+        printf("[EBOOK] Directory already exists: %s\n", EBOOK_TXT_DIR);
+    }
 
     return 0;
 }
@@ -755,8 +755,9 @@ static void update_battery_display(void)
             battery_level++;
         }
 
-        // Update the main screen battery status
-        simple_demo_set_battery_status(battery_level, charging);
+        // Update the main screen battery status (convert 0-100 to 0-6 level)
+        uint8_t battery_state = (battery_level * 6) / 100;
+        main_screen_set_battery_state(battery_state, charging);
     }
 
     // Choose appropriate battery icon based on level and charging status
