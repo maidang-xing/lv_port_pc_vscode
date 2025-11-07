@@ -35,7 +35,8 @@
 			"string.h": "c",
 			"toast_screen.h": "c",
 			"main_screen.h": "c",
-			"screen_manager.h": "c"
+			"screen_manager.h": "c",
+			"txt_viewer_screen.h": "c"
 		},
 	},
 	// tasks.json section

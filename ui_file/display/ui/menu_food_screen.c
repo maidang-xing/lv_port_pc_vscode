@@ -175,30 +175,17 @@ static void create_food_item(food_item_t *item, uint8_t index)
 {
     lv_obj_t *btn = lv_list_add_btn(menu_food_screen_list, item->icon, item->name);
 
-    // Style based on availability
-    if (!item->available) {
-        lv_obj_set_style_text_color(btn, lv_color_make(128, 128, 128), 0);
-        lv_obj_set_style_bg_color(btn, lv_color_make(240, 240, 240), 0);
+    lv_obj_set_style_text_color(btn, lv_color_black(), 0);
+    lv_obj_set_style_bg_color(btn, lv_color_white(), 0);
 
-        // Add level requirement text
-        lv_obj_t *level_label = lv_label_create(btn);
-        char level_text[16];
-        snprintf(level_text, sizeof(level_text), "Lv.%d", item->required_level);
-        lv_label_set_text(level_label, level_text);
-        lv_obj_align(level_label, LV_ALIGN_RIGHT_MID, -5, 0);
-        lv_obj_set_style_text_color(level_label, lv_color_make(255, 0, 0), 0);
-        lv_obj_set_style_text_font(level_label, &lv_font_montserrat_10, 0);
-    } else {
-        // Add nutrition info for available items
-        lv_obj_t *nutrition_label = lv_label_create(btn);
-        char nutrition_text[32];
-        snprintf(nutrition_text, sizeof(nutrition_text), "H:%d +%d",
-                item->hunger_restore, item->happiness_bonus);
-        lv_label_set_text(nutrition_label, nutrition_text);
-        lv_obj_align(nutrition_label, LV_ALIGN_RIGHT_MID, -5, 0);
-        lv_obj_set_style_text_color(nutrition_label, lv_color_make(0, 128, 0), 0);
-        lv_obj_set_style_text_font(nutrition_label, &lv_font_montserrat_10, 0);
-    }
+    // Add level requirement text
+    lv_obj_t *level_label = lv_label_create(btn);
+    char level_text[16];
+    snprintf(level_text, sizeof(level_text), "Lv.%d", item->required_level);
+    lv_label_set_text(level_label, level_text);
+    lv_obj_align(level_label, LV_ALIGN_RIGHT_MID, -5, 0);
+    lv_obj_set_style_text_color(level_label, lv_color_black(), 0);
+    lv_obj_set_style_text_font(level_label, &lv_font_montserrat_10, 0);
 }
 
 /**
@@ -247,7 +234,7 @@ static void handle_food_selection(void)
                 if (pet_state_timer) {
                     lv_timer_del(pet_state_timer);  // Clean up existing timer
                 }
-                pet_state_timer = lv_timer_create(pet_state_timer_cb, 2000, NULL);
+                pet_state_timer = lv_timer_create(pet_state_timer_cb, 3000, NULL);
                 // lv_timer_set_repeat_count(pet_state_timer, 1);  // Run only once
 
                 printf("Started eat animation timer for 3 seconds\n");
@@ -360,7 +347,7 @@ static void update_food_availability(void)
 void menu_food_screen_init(void)
 {
     ui_menu_food_screen_screen = lv_obj_create(NULL);
-    lv_obj_set_size(ui_menu_food_screen_screen, 384, 168);
+    lv_obj_set_size(ui_menu_food_screen_screen, AI_PET_SCREEN_WIDTH, AI_PET_SCREEN_HEIGHT);
     lv_obj_set_style_bg_color(ui_menu_food_screen_screen, lv_color_white(), 0);
 
     // Title at the top

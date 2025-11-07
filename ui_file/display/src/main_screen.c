@@ -20,26 +20,11 @@
 
 #include "main_screen.h"
 #include "toast_screen.h"
-#include "menu_bath_screen.h"
-#include "menu_food_screen.h"
-#include "menu_health_screen.h"
-#include "menu_info_screen.h"
-#include "menu_scan_screen.h"
-#include "menu_sleep_screen.h"
-#include "menu_video_screen.h"
-#include "standby_screen.h"
-#include "ebook_screen.h"
-#include "txt_viewer_screen.h"
 #include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
 #include <string.h>
-#if defined(ENABLE_LVGL_HARDWARE)
-#include "ai_audio.h"
-#include "axp2101_driver.h"
-#include "tal_system.h"
-#include "tal_kv.h"
-#endif
+
 /***********************************************************
 ***********************Type Definitions********************
 ***********************************************************/
@@ -106,9 +91,9 @@ LV_IMG_DECLARE(battery_charging_icon);
 #define AI_PET_SCREEN_HEIGHT 168
 #endif
 
-// Pet animation constants - Optimized for better performance
-#define PET_ANIMATION_INTERVAL 100
-#define PET_MOVEMENT_INTERVAL 200
+// Pet animation constants
+#define PET_ANIMATION_INTERVAL 20
+#define PET_MOVEMENT_INTERVAL 50
 #define PET_MOVEMENT_STEP 2
 #define PET_MOVEMENT_LIMIT 80
 #define PET_WALK_DURATION_MIN 2000
@@ -118,11 +103,8 @@ LV_IMG_DECLARE(battery_charging_icon);
 #define PET_IDLE_ANIMATION_SWITCH_MIN 4000
 #define PET_IDLE_ANIMATION_SWITCH_MAX 12000
 
-#define MENU_BUTTON_COUNT 7
-#define BATTERY_UPDATE_INTERVAL 1000
-#define UI_UPDATE_INTERVAL 100
-#define STANDBY_TIME 30 // Seconds of inactivity before standby
-#define PET_NAME_KV_KEY "pet_name"
+// Use ai_pet_state_t from ai_pocket_pet_app.h instead of redefining
+
 /***********************************************************
 ***********************variable define**********************
 ***********************************************************/
@@ -133,47 +115,43 @@ static lv_obj_t *ui_main_screen;
 static lv_obj_t *status_bar;
 static lv_obj_t *pet_area;
 static lv_obj_t *bottom_menu;
-static lv_obj_t *horizontal_line;
+static lv_obj_t *sub_menu;
+static lv_obj_t *horizontal_line;  // Add reference to horizontal line
 
-// Menu system
-static lv_obj_t *menu_buttons[MENU_BUTTON_COUNT];
-static uint8_t current_selected_button = 0;
+// Menu system integration
+static lv_obj_t *menu_buttons[7];  // Array to store menu button references
+static uint8_t selected_menu_button = 0;  // Currently selected menu button
+static bool menu_mode = false;  // Flag to track if we're in menu selection mode
 
 // Status bar components
 static lv_obj_t *wifi_icon;
-static lv_obj_t *four_g_logo_obj;
+static lv_obj_t *four_g_logo_obj;  // 重命名避免冲突
 static lv_obj_t *cellular_icon;
 static lv_obj_t *battery_icon;
-static lv_obj_t *battery_label;  // Battery info label
 
 // Status tracking
-static uint8_t current_wifi_strength = 0;
+static uint8_t current_wifi_strength = 3;
 static uint8_t current_cellular_strength = 2;
 static bool current_cellular_connected = true;
 static uint8_t current_battery_level = 4;
 static bool current_battery_charging = false;
 
-// Pet area variables - Pre-loaded GIF approach (like pet_area.c)
-static lv_obj_t *gif_container = NULL;  // Container for GIF widgets
-
-// Normal state animation objects (for walking behavior)
-static lv_obj_t *pet_image_walk = NULL;
-static lv_obj_t *pet_image_walk_left = NULL;
-static lv_obj_t *pet_image_blink = NULL;
-static lv_obj_t *pet_image_stand = NULL;
-static lv_obj_t *current_normal_image = NULL; // Points to the currently active normal state image
-
-// Special state animation objects (pre-loaded to prevent black screen)
-static lv_obj_t *pet_image_sleep = NULL;
-static lv_obj_t *pet_image_dance = NULL;
-static lv_obj_t *pet_image_eat = NULL;
-static lv_obj_t *pet_image_bath = NULL;
-static lv_obj_t *pet_image_toilet = NULL;
-static lv_obj_t *pet_image_sick = NULL;
-static lv_obj_t *pet_image_happy = NULL;
-static lv_obj_t *pet_image_angry = NULL;
-static lv_obj_t *pet_image_cry = NULL;
-static lv_obj_t *current_special_image = NULL; // Points to the currently active special state image
+// Pet area variables
+static lv_obj_t *pet_image_walk;
+static lv_obj_t *pet_image_walk_left;
+static lv_obj_t *pet_image_blink;
+static lv_obj_t *pet_image_stand;
+static lv_obj_t *pet_image_sleep;
+static lv_obj_t *pet_image_dance;
+static lv_obj_t *pet_image_eat;
+static lv_obj_t *pet_image_bath;
+static lv_obj_t *pet_image_toilet;
+static lv_obj_t *pet_image_sick;
+static lv_obj_t *pet_image_happy;
+static lv_obj_t *pet_image_angry;
+static lv_obj_t *pet_image_cry;
+static lv_obj_t *current_normal_image;
+static lv_obj_t *current_special_image;
 
 // Pet animation state
 static ai_pet_state_t current_animation_state = AI_PET_STATE_NORMAL;
@@ -186,13 +164,10 @@ static uint32_t pet_state_duration = 0;
 static bool pet_is_walking = false;
 static uint8_t idle_animation_state = 1;
 
-// UI update timer (unified update for all UI elements)
-static lv_timer_t *ui_update_timer = NULL;
-
-// Performance optimization
-static int16_t last_pet_x_pos = 0;
-
-// Idle animation timing
+// Menu system variables
+static uint8_t current_selected_button = 0;
+// static bool is_in_menu_mode = false;
+#define MENU_BUTTON_COUNT 7
 static uint32_t idle_animation_timer = 0;
 static uint32_t idle_animation_duration = 0;
 
@@ -202,9 +177,6 @@ static void *pet_event_user_data = NULL;
 
 // Pet stats
 static pet_stats_t main_screen_pet_stats;
-
-// Standby mode timer
-static uint16_t standby_time = 0;
 
 Screen_t main_screen = {
     .init = main_screen_init,
@@ -220,35 +192,55 @@ Screen_t main_screen = {
 static void keyboard_event_cb(lv_event_t *e);
 static void create_main_ui_components(void);
 
-// Menu system functions
+// Menu system integration functions
 static void update_menu_button_selection(uint8_t old_selection, uint8_t new_selection);
 static void handle_menu_navigation(uint32_t key);
 static void handle_menu_selection(void);
+// static void enter_menu_mode(void);
+// static void exit_menu_mode(void);
+
+// Internal menu system functions
 static lv_obj_t* create_bottom_menu(lv_obj_t *parent);
+static lv_obj_t* create_sub_menu(lv_obj_t *parent);
 static void handle_main_navigation(uint32_t key);
 static uint8_t get_selected_button(void);
 
-// UI component creation functions
+// External screen functions for menu switching - using screen manager stack
+extern Screen_t menu_info_screen;
+extern Screen_t menu_food_screen;
+extern Screen_t menu_bath_screen;
+extern Screen_t menu_health_screen;
+extern Screen_t menu_sleep_screen;
+extern Screen_t menu_video_screen;
+extern Screen_t menu_scan_screen;
+extern Screen_t toast_screen;
+
+// Simple inline implementations of external functions
 static lv_obj_t* simple_status_bar_create(lv_obj_t *parent);
 static lv_obj_t* simple_pet_area_create(lv_obj_t *parent);
+// static lv_obj_t* simple_menu_system_create_sub_menu(lv_obj_t *parent);
+static void simple_toast_create(lv_obj_t *parent);
 static void simple_pet_area_start_animation(void);
 static void simple_pet_area_stop_animation(void);
 
-// Status bar icon helper functions (inline for performance)
-static inline const lv_img_dsc_t* get_wifi_icon_by_strength(uint8_t strength);
-static inline const lv_img_dsc_t* get_cellular_icon_by_strength(uint8_t strength, bool connected);
-static inline const lv_img_dsc_t* get_battery_icon_by_level(uint8_t level, bool charging);
+// Simple demo functions
+void simple_demo_set_wifi_strength(uint8_t strength);
+void simple_demo_set_cellular_status(uint8_t strength, bool connected);
+void simple_demo_set_battery_status(uint8_t level, bool charging);
+
+// Status bar icon helper functions
+static const lv_img_dsc_t* get_wifi_icon_by_strength(uint8_t strength);
+static const lv_img_dsc_t* get_cellular_icon_by_strength(uint8_t strength, bool connected);
+static const lv_img_dsc_t* get_battery_icon_by_level(uint8_t level, bool charging);
+static void update_status_bar_icons(void);
 
 // Pet animation functions
-static const lv_img_dsc_t* get_gif_src_by_state(ai_pet_state_t state, bool is_walking, int8_t direction, uint8_t idle_state);
-static void switch_pet_animation(lv_obj_t* target_image);
-// static void switch_to_special_animation(lv_obj_t* target_special_image);
-// static void switch_to_normal_animation(void);
 static void pet_animation_cb(lv_timer_t *timer);
 static void pet_movement_cb(lv_timer_t *timer);
-
-// UI update timer callback
-static void ui_update_timer_cb(lv_timer_t *timer);
+static void switch_pet_animation(lv_obj_t *new_animation);
+static void switch_to_special_animation(ai_pet_state_t state);
+static void switch_to_normal_animation(void);
+void simple_pet_area_set_animation(ai_pet_state_t state);
 
 /***********************************************************
 ***********************function define**********************
@@ -266,8 +258,6 @@ static void keyboard_event_cb(lv_event_t *e)
     if (e == NULL) {
         return;
     }
-
-    standby_time = 0;  // Reset standby timer on any key event
 
     // lv_event_code_t code = lv_event_get_code(e);
 
@@ -303,19 +293,9 @@ static void keyboard_event_cb(lv_event_t *e)
         case KEY_ESC:
             printf("[%s] Keyboard event: ESC\n", main_screen.name);
             // ESC shows help message
-            // toast_screen_show("Use LEFT/RIGHT to select, ENTER to confirm", 2000);
+            toast_screen_show("Use LEFT/RIGHT to select, ENTER to confirm", 2000);
             break;
-        case KEY_JOYCON:{
-#if defined(ENABLE_LVGL_HARDWARE)
-                uint8_t chat_text[] = "Tell me today's weather and tell me a new story";
-                toast_screen_show("Tell you a new story", 1000);
-                ai_text_agent_upload(chat_text, sizeof(chat_text));
-#else
-                toast_screen_show("Unlock at Higher Level", 2000);
-#endif
-            break;
-        }
-#if !defined(ENABLE_LVGL_HARDWARE)
+
         // Pet event testing keys (demonstrate pet event callback system)
         case 116: // 't' key - Test pet event: eating
             printf("T key pressed - Testing pet event: eating\n");
@@ -342,91 +322,87 @@ static void keyboard_event_cb(lv_event_t *e)
             main_screen_handle_pet_event(PET_STAT_RANDOMIZE);
             break;
 
-        // Pet animation testing keys
+        // Pet animation testing keys (same as ai_pocket_pet_app.c)
         case 49: // '1' key - Normal state
             printf("1 key pressed - Setting pet to normal state\n");
-            main_screen_set_pet_animation_state(AI_PET_STATE_NORMAL);
+            simple_pet_area_set_animation(AI_PET_STATE_NORMAL);
             break;
         case 50: // '2' key - Sleep
             printf("2 key pressed - Setting pet to sleep\n");
-            main_screen_set_pet_animation_state(AI_PET_STATE_SLEEP);
+            simple_pet_area_set_animation(AI_PET_STATE_SLEEP);
             break;
         case 51: // '3' key - Dance
             printf("3 key pressed - Setting pet to dance\n");
-            main_screen_set_pet_animation_state(AI_PET_STATE_DANCE);
+            simple_pet_area_set_animation(AI_PET_STATE_DANCE);
             break;
         case 52: // '4' key - Eat
             printf("4 key pressed - Setting pet to eat\n");
-            main_screen_set_pet_animation_state(AI_PET_STATE_EAT);
+            simple_pet_area_set_animation(AI_PET_STATE_EAT);
             break;
         case 53: // '5' key - Bath
             printf("5 key pressed - Setting pet to bath\n");
-            main_screen_set_pet_animation_state(AI_PET_STATE_BATH);
+            simple_pet_area_set_animation(AI_PET_STATE_BATH);
             break;
         case 54: // '6' key - Toilet
             printf("6 key pressed - Setting pet to toilet\n");
-            main_screen_set_pet_animation_state(AI_PET_STATE_TOILET);
+            simple_pet_area_set_animation(AI_PET_STATE_TOILET);
             break;
         case 55: // '7' key - Sick
             printf("7 key pressed - Setting pet to sick\n");
-            main_screen_set_pet_animation_state(AI_PET_STATE_SICK);
+            simple_pet_area_set_animation(AI_PET_STATE_SICK);
             break;
         case 56: // '8' key - Happy
             printf("8 key pressed - Setting pet to happy\n");
-            main_screen_set_pet_animation_state(AI_PET_STATE_HAPPY);
+            simple_pet_area_set_animation(AI_PET_STATE_HAPPY);
             break;
         case 57: // '9' key - Angry
             printf("9 key pressed - Setting pet to angry\n");
-            main_screen_set_pet_animation_state(AI_PET_STATE_ANGRY);
+            simple_pet_area_set_animation(AI_PET_STATE_ANGRY);
             break;
         case 48: // '0' key - Cry
             printf("0 key pressed - Setting pet to cry\n");
-            main_screen_set_pet_animation_state(AI_PET_STATE_CRY);
+            simple_pet_area_set_animation(AI_PET_STATE_CRY);
             break;
 
-        // Battery testing keys
+        // Battery testing keys (same as ai_pocket_pet_app.c)
         case 97: // 'a' key - Battery 0 (empty)
             printf("A key pressed - Setting battery to empty\n");
-            main_screen_set_battery_state(0, false);
+            simple_demo_set_battery_status(0, false);
             break;
         case 115: // 's' key - Battery 1
             printf("S key pressed - Setting battery to 1 bar\n");
-            main_screen_set_battery_state(1, false);
+            simple_demo_set_battery_status(1, false);
             break;
         case 100: // 'd' key - Battery 2
             printf("D key pressed - Setting battery to 2 bars\n");
-            main_screen_set_battery_state(2, false);
+            simple_demo_set_battery_status(2, false);
             break;
         case 102: // 'f' key - Battery 3
             printf("F key pressed - Setting battery to 3 bars\n");
-            main_screen_set_battery_state(3, false);
+            simple_demo_set_battery_status(3, false);
             break;
         case 103: // 'g' key - Battery 4
             printf("G key pressed - Setting battery to 4 bars\n");
-            main_screen_set_battery_state(4, false);
+            simple_demo_set_battery_status(4, false);
             break;
         case 104: // 'h' key - Battery 5
             printf("H key pressed - Setting battery to 5 bars\n");
-            main_screen_set_battery_state(5, false);
+            simple_demo_set_battery_status(5, false);
             break;
         case 106: // 'j' key - Battery 6 (full)
             printf("J key pressed - Setting battery to full\n");
-            main_screen_set_battery_state(6, false);
+            simple_demo_set_battery_status(6, false);
             break;
         case 99: // 'c' key - Battery charging
             printf("C key pressed - Setting battery to charging\n");
-            // screen_load(&standby_screen);
-            // screen_load(&ebook_screen);
-            screen_load(&txt_viewer_screen);
+            simple_demo_set_battery_status(3, true);
             break;
-#endif
+
         default:
             printf("[%s] Keyboard event: %d\n", main_screen.name, key);
             break;
     }
-}
-
-/**
+}/**
  * @brief Create main UI components
  *
  * This function creates all the main UI components including status bar,
@@ -445,13 +421,8 @@ static void create_main_ui_components(void)
         printf("[%s] Warning: Failed to create status bar\n", main_screen.name);
     }
 
-    // Create bottom menu using the real menu system FIRST (lowest layer)
-    bottom_menu = create_bottom_menu(ui_main_screen);
-    if (bottom_menu == NULL) {
-        printf("[%s] Warning: Failed to create bottom menu\n", main_screen.name);
-    }
-
     // Add horizontal line across the screen, 2px thick, positioned 1/3 from bottom
+    // Create this BEFORE pet area so pet appears above the line
     horizontal_line = lv_obj_create(ui_main_screen);
     if (horizontal_line == NULL) {
         printf("[%s] Error: Failed to create horizontal line\n", main_screen.name);
@@ -464,11 +435,25 @@ static void create_main_ui_components(void)
         lv_obj_set_style_pad_all(horizontal_line, 0, 0);
     }
 
-    // Create pet area LAST so pet appears above everything else (highest layer)
+    // Create pet area AFTER horizontal line so pet appears above it
     pet_area = simple_pet_area_create(ui_main_screen);
     if (pet_area == NULL) {
         printf("[%s] Warning: Failed to create pet area\n", main_screen.name);
     }
+
+    // Create bottom menu using the real menu system
+    bottom_menu = create_bottom_menu(ui_main_screen);
+    if (bottom_menu == NULL) {
+        printf("[%s] Warning: Failed to create bottom menu\n", main_screen.name);
+    }
+
+    sub_menu = create_sub_menu(ui_main_screen);
+    if (sub_menu == NULL) {
+        printf("[%s] Warning: Failed to create sub menu\n", main_screen.name);
+    }
+
+    // Create toast message system
+    simple_toast_create(ui_main_screen);
 
     // Start pet animation
     simple_pet_area_start_animation();
@@ -508,6 +493,11 @@ void main_screen_init(void)
     lv_group_add_obj(group, ui_main_screen);
     lv_group_focus_obj(ui_main_screen);
 
+    // Initialize demo status
+    simple_demo_set_wifi_strength(3);
+    simple_demo_set_cellular_status(2, true);
+    simple_demo_set_battery_status(4, false);
+
     // Initialize pet stats
     main_screen_init_pet_stats(NULL);
 }
@@ -523,30 +513,16 @@ void main_screen_deinit(void)
     // Stop pet animation
     simple_pet_area_stop_animation();
 
-    // Reset GIF container and image pointers (objects will be cleaned up with parent)
-    gif_container = NULL;
-    pet_image_walk = NULL;
-    pet_image_walk_left = NULL;
-    pet_image_blink = NULL;
-    pet_image_stand = NULL;
-    pet_image_sleep = NULL;
-    pet_image_dance = NULL;
-    pet_image_eat = NULL;
-    pet_image_bath = NULL;
-    pet_image_toilet = NULL;
-    pet_image_sick = NULL;
-    pet_image_happy = NULL;
-    pet_image_angry = NULL;
-    pet_image_cry = NULL;
-    current_normal_image = NULL;
-    current_special_image = NULL;
-
     // Remove event callback and delete the main screen object
     if (ui_main_screen) {
         // Remove from group before deleting
-        lv_obj_remove_event_cb(ui_main_screen, keyboard_event_cb);   // Remove event callback
-        lv_group_remove_obj(ui_main_screen);                         // Remove from group
-        printf("deinit main screen\n");
+        lv_group_t *group = lv_group_get_default();
+        if (group) {
+            lv_group_remove_obj(ui_main_screen);
+        }
+
+        lv_obj_remove_event_cb(ui_main_screen, keyboard_event_cb);
+
         // Delete the main screen object
         // lv_obj_del(ui_main_screen);
         // ui_main_screen = NULL;
@@ -556,6 +532,7 @@ void main_screen_deinit(void)
     status_bar = NULL;
     pet_area = NULL;
     bottom_menu = NULL;
+    sub_menu = NULL;
     horizontal_line = NULL;
 
     // Reset status bar icon pointers
@@ -563,17 +540,17 @@ void main_screen_deinit(void)
     four_g_logo_obj = NULL;
     cellular_icon = NULL;
     battery_icon = NULL;
-    battery_label = NULL;
 
     // Reset menu system variables
-
-    for (int i = 0; i < MENU_BUTTON_COUNT; i++) {
+    selected_menu_button = 0;
+    menu_mode = false;
+    for (int i = 0; i < 7; i++) {
         menu_buttons[i] = NULL;
     }
 }
 
 /***********************************************************
-******************UI Component Creation********************
+******************simple inline implementations*************
 ***********************************************************/
 
 static lv_obj_t* simple_status_bar_create(lv_obj_t *parent)
@@ -612,17 +589,13 @@ static lv_obj_t* simple_status_bar_create(lv_obj_t *parent)
     lv_obj_set_size(cellular_icon, 24, 24);
     lv_obj_align(cellular_icon, LV_ALIGN_LEFT_MID, 55, 0);
 
-    // Battery info label (voltage and percentage)
-    battery_label = lv_label_create(status_bar);
-    lv_obj_set_style_text_font(battery_label, &lv_font_montserrat_10, 0);
-    lv_obj_set_style_text_color(battery_label, lv_color_black(), 0);
-    lv_obj_align(battery_label, LV_ALIGN_RIGHT_MID, -35, 0);
-    // lv_label_set_text(battery_label, "4.2V 100%");
-
     // Battery icon (image widget)
     battery_icon = lv_img_create(status_bar);
     lv_obj_set_size(battery_icon, 24, 24);
     lv_obj_align(battery_icon, LV_ALIGN_RIGHT_MID, -5, 0);
+
+    // Set initial icons based on current status
+    update_status_bar_icons();
 
     return status_bar;
 }
@@ -647,8 +620,8 @@ static lv_obj_t* simple_pet_area_create(lv_obj_t *parent)
     lv_obj_set_style_pad_all(pet_area, 0, 0);
     lv_obj_clear_flag(pet_area, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Create a container for the GIF widgets (highest priority display)
-    gif_container = lv_obj_create(pet_area);
+    // Create a container for the GIF widgets
+    lv_obj_t *gif_container = lv_obj_create(pet_area);
     lv_obj_set_size(gif_container, 170+10, 170+10);
     lv_obj_align(gif_container, LV_ALIGN_CENTER, 0, -5);
     lv_obj_set_style_bg_opa(gif_container, LV_OPA_TRANSP, 0);
@@ -656,11 +629,7 @@ static lv_obj_t* simple_pet_area_create(lv_obj_t *parent)
     lv_obj_set_style_pad_all(gif_container, 0, 0);
     lv_obj_clear_flag(gif_container, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Ensure GIF container has highest priority (always on top)
-    lv_obj_move_foreground(gif_container);
-
-    // Create all normal state GIF widgets (pre-loaded)
-    // Walk right animation
+    // Create normal state animation objects
     pet_image_walk = lv_gif_create(gif_container);
     lv_gif_set_src(pet_image_walk, &ducky_walk);
     lv_obj_align(pet_image_walk, LV_ALIGN_CENTER, 0, 0);
@@ -668,7 +637,6 @@ static lv_obj_t* simple_pet_area_create(lv_obj_t *parent)
     lv_obj_set_size(pet_image_walk, 159, 164);
     lv_obj_set_style_bg_opa(pet_image_walk, LV_OPA_TRANSP, 0);
 
-    // Walk left animation
     pet_image_walk_left = lv_gif_create(gif_container);
     lv_gif_set_src(pet_image_walk_left, &ducky_walk_to_left);
     lv_obj_align(pet_image_walk_left, LV_ALIGN_CENTER, 0, 0);
@@ -676,7 +644,6 @@ static lv_obj_t* simple_pet_area_create(lv_obj_t *parent)
     lv_obj_set_size(pet_image_walk_left, 159, 164);
     lv_obj_set_style_bg_opa(pet_image_walk_left, LV_OPA_TRANSP, 0);
 
-    // Blink animation
     pet_image_blink = lv_gif_create(gif_container);
     lv_gif_set_src(pet_image_blink, &ducky_blink);
     lv_obj_align(pet_image_blink, LV_ALIGN_CENTER, 0, 0);
@@ -684,7 +651,6 @@ static lv_obj_t* simple_pet_area_create(lv_obj_t *parent)
     lv_obj_set_size(pet_image_blink, 159, 164);
     lv_obj_set_style_bg_opa(pet_image_blink, LV_OPA_TRANSP, 0);
 
-    // Stand animation
     pet_image_stand = lv_gif_create(gif_container);
     lv_gif_set_src(pet_image_stand, &ducky_stand_still);
     lv_obj_align(pet_image_stand, LV_ALIGN_CENTER, 0, 0);
@@ -692,7 +658,7 @@ static lv_obj_t* simple_pet_area_create(lv_obj_t *parent)
     lv_obj_set_size(pet_image_stand, 159, 164);
     lv_obj_set_style_bg_opa(pet_image_stand, LV_OPA_TRANSP, 0);
 
-    // Create special state animation objects (pre-loaded to prevent black screen)
+    // Create special state animation objects
     pet_image_sleep = lv_gif_create(gif_container);
     lv_gif_set_src(pet_image_sleep, &ducky_sleep);
     lv_obj_align(pet_image_sleep, LV_ALIGN_CENTER, 0, -5);
@@ -765,9 +731,6 @@ static lv_obj_t* simple_pet_area_create(lv_obj_t *parent)
     lv_obj_set_style_bg_opa(pet_image_cry, LV_OPA_TRANSP, 0);
     lv_obj_add_flag(pet_image_cry, LV_OBJ_FLAG_HIDDEN);
 
-    // Initialize current special image pointer
-    current_special_image = NULL;
-
     // Set initial active image and hide others
     current_normal_image = pet_image_stand; // Default to standing
     lv_obj_add_flag(pet_image_blink, LV_OBJ_FLAG_HIDDEN);
@@ -776,188 +739,18 @@ static lv_obj_t* simple_pet_area_create(lv_obj_t *parent)
 
     // Initialize pet state
     current_animation_state = AI_PET_STATE_NORMAL;
+    current_special_image = NULL;
     pet_x_pos = 0;
     pet_direction = 1;
     pet_is_walking = false;
     idle_animation_state = 1;
     pet_state_timer = 0;
-#if defined(ENABLE_LVGL_HARDWARE)
-    pet_state_duration = PET_IDLE_DURATION_MIN + tal_system_get_random(PET_IDLE_DURATION_MAX - PET_IDLE_DURATION_MIN);
-    idle_animation_timer = 0;
-    idle_animation_duration = PET_IDLE_ANIMATION_SWITCH_MIN + tal_system_get_random(PET_IDLE_ANIMATION_SWITCH_MAX - PET_IDLE_ANIMATION_SWITCH_MIN);
-#else
     pet_state_duration = PET_IDLE_DURATION_MIN + (rand() % (PET_IDLE_DURATION_MAX - PET_IDLE_DURATION_MIN));
     idle_animation_timer = 0;
     idle_animation_duration = PET_IDLE_ANIMATION_SWITCH_MIN + (rand() % (PET_IDLE_ANIMATION_SWITCH_MAX - PET_IDLE_ANIMATION_SWITCH_MIN));
-#endif
 
     return pet_area;
 }
-
-/***********************************************************
-*****************Dynamic GIF Management Functions**********
-***********************************************************/
-
-/**
- * @brief Get GIF source based on pet state and animation parameters
- */
-static const lv_img_dsc_t* get_gif_src_by_state(ai_pet_state_t state, bool is_walking, int8_t direction, uint8_t idle_state)
-{
-    switch (state) {
-        case AI_PET_STATE_NORMAL:
-            if (is_walking) {
-                return (direction == 1) ? &ducky_walk : &ducky_walk_to_left;
-            } else {
-                return (idle_state == 0) ? &ducky_blink : &ducky_stand_still;
-            }
-        case AI_PET_STATE_SLEEP:
-            return &ducky_sleep;
-        case AI_PET_STATE_DANCE:
-            return &ducky_dance;
-        case AI_PET_STATE_EAT:
-            return &ducky_eat;
-        case AI_PET_STATE_BATH:
-            return &ducky_bath;
-        case AI_PET_STATE_TOILET:
-            return &ducky_toilet;
-        case AI_PET_STATE_SICK:
-            return &ducky_sick;
-        case AI_PET_STATE_HAPPY:
-            return &ducky_emotion_happy;
-        case AI_PET_STATE_ANGRY:
-            return &ducky_emotion_angry;
-        case AI_PET_STATE_CRY:
-            return &ducky_emotion_cry;
-        default:
-            return &ducky_stand_still;
-    }
-}
-
-/**
- * @brief Get the corresponding GIF image object based on GIF source
- * @param gif_src The GIF source descriptor
- * @return The corresponding GIF image object, or NULL if not found
- */
-static lv_obj_t* get_gif_object_by_src(const lv_img_dsc_t* gif_src)
-{
-    if (gif_src == &ducky_walk) return pet_image_walk;
-    if (gif_src == &ducky_walk_to_left) return pet_image_walk_left;
-    if (gif_src == &ducky_blink) return pet_image_blink;
-    if (gif_src == &ducky_stand_still) return pet_image_stand;
-    if (gif_src == &ducky_sleep) return pet_image_sleep;
-    if (gif_src == &ducky_dance) return pet_image_dance;
-    if (gif_src == &ducky_eat) return pet_image_eat;
-    if (gif_src == &ducky_bath) return pet_image_bath;
-    if (gif_src == &ducky_toilet) return pet_image_toilet;
-    if (gif_src == &ducky_sick) return pet_image_sick;
-    if (gif_src == &ducky_emotion_happy) return pet_image_happy;
-    if (gif_src == &ducky_emotion_angry) return pet_image_angry;
-    if (gif_src == &ducky_emotion_cry) return pet_image_cry;
-    return NULL;
-}
-
-/**
- * @brief Switch between normal state pet animations (walk, walk_left, blink, stand)
- * @param target_image The target normal animation image object to show
- */
-static void switch_pet_animation(lv_obj_t* target_image)
-{
-    if (target_image == NULL) {
-        return;
-    }
-
-    // Check if GIF objects are valid before operating on them
-    if (pet_image_walk == NULL || pet_image_walk_left == NULL || 
-        pet_image_blink == NULL || pet_image_stand == NULL) {
-        printf("[%s] Warning: GIF objects not initialized, cannot switch animation\n", main_screen.name);
-        return;
-    }
-
-    // Hide all normal state animations
-    lv_obj_add_flag(pet_image_walk, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(pet_image_walk_left, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(pet_image_blink, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(pet_image_stand, LV_OBJ_FLAG_HIDDEN);
-
-    // Show the target animation
-    lv_obj_clear_flag(target_image, LV_OBJ_FLAG_HIDDEN);
-
-    // Update current normal image pointer
-    current_normal_image = target_image;
-}
-
-/**
- * @brief Switch to a special state animation (sleep, dance, eat, bath, toilet, sick, happy, angry, cry)
- * @param target_special_image The target special animation image object to show
- */
-// static void switch_to_special_animation(lv_obj_t* target_special_image)
-// {
-//     if (target_special_image == NULL) {
-//         return;
-//     }
-
-//     // Check if GIF objects are valid before operating on them
-//     if (pet_image_walk == NULL || pet_image_sleep == NULL || 
-//         pet_image_dance == NULL || pet_image_eat == NULL) {
-//         printf("[%s] Warning: GIF objects not initialized, cannot switch to special animation\n", main_screen.name);
-//         return;
-//     }
-
-//     // Hide all normal state animations
-//     lv_obj_add_flag(pet_image_walk, LV_OBJ_FLAG_HIDDEN);
-//     lv_obj_add_flag(pet_image_walk_left, LV_OBJ_FLAG_HIDDEN);
-//     lv_obj_add_flag(pet_image_blink, LV_OBJ_FLAG_HIDDEN);
-//     lv_obj_add_flag(pet_image_stand, LV_OBJ_FLAG_HIDDEN);
-
-//     // Hide all special state animations
-//     lv_obj_add_flag(pet_image_sleep, LV_OBJ_FLAG_HIDDEN);
-//     lv_obj_add_flag(pet_image_dance, LV_OBJ_FLAG_HIDDEN);
-//     lv_obj_add_flag(pet_image_eat, LV_OBJ_FLAG_HIDDEN);
-//     lv_obj_add_flag(pet_image_bath, LV_OBJ_FLAG_HIDDEN);
-//     lv_obj_add_flag(pet_image_toilet, LV_OBJ_FLAG_HIDDEN);
-//     lv_obj_add_flag(pet_image_sick, LV_OBJ_FLAG_HIDDEN);
-//     lv_obj_add_flag(pet_image_happy, LV_OBJ_FLAG_HIDDEN);
-//     lv_obj_add_flag(pet_image_angry, LV_OBJ_FLAG_HIDDEN);
-//     lv_obj_add_flag(pet_image_cry, LV_OBJ_FLAG_HIDDEN);
-
-//     // Show the target special animation
-//     lv_obj_clear_flag(target_special_image, LV_OBJ_FLAG_HIDDEN);
-
-//     // Update special image pointer
-//     current_special_image = target_special_image;
-// }
-
-/**
- * @brief Switch from special state back to normal state animation
- */
-// static void switch_to_normal_animation(void)
-// {
-//     // Check if GIF objects are valid before operating on them
-//     if (pet_image_sleep == NULL || pet_image_dance == NULL || pet_image_eat == NULL) {
-//         printf("[%s] Warning: GIF objects not initialized, cannot switch to normal animation\n", main_screen.name);
-//         return;
-//     }
-
-//     // Hide all special state animations
-//     lv_obj_add_flag(pet_image_sleep, LV_OBJ_FLAG_HIDDEN);
-//     lv_obj_add_flag(pet_image_dance, LV_OBJ_FLAG_HIDDEN);
-//     lv_obj_add_flag(pet_image_eat, LV_OBJ_FLAG_HIDDEN);
-//     lv_obj_add_flag(pet_image_bath, LV_OBJ_FLAG_HIDDEN);
-//     lv_obj_add_flag(pet_image_toilet, LV_OBJ_FLAG_HIDDEN);
-//     lv_obj_add_flag(pet_image_sick, LV_OBJ_FLAG_HIDDEN);
-//     lv_obj_add_flag(pet_image_happy, LV_OBJ_FLAG_HIDDEN);
-//     lv_obj_add_flag(pet_image_angry, LV_OBJ_FLAG_HIDDEN);
-//     lv_obj_add_flag(pet_image_cry, LV_OBJ_FLAG_HIDDEN);
-
-//     // Show current normal animation (previously active before special state)
-//     if (current_normal_image != NULL) {
-//         lv_obj_clear_flag(current_normal_image, LV_OBJ_FLAG_HIDDEN);
-//     }
-
-//     // Clear special image pointer and update state
-//     current_special_image = NULL;
-//     current_animation_state = AI_PET_STATE_NORMAL;
-// }
 
 // Menu system integration functions
 static void update_menu_button_selection(uint8_t old_selection, uint8_t new_selection)
@@ -1051,18 +844,56 @@ static void handle_menu_selection(void)
     }
 }
 
+// static void enter_menu_mode(void)
+// {
+//     // No longer needed - menu is always active
+//     printf("[%s] Menu navigation always active\n", main_screen.name);
+// }
+
+// static void exit_menu_mode(void)
+// {
+//     // No longer needed - menu is always active
+//     printf("[%s] Menu navigation always active\n", main_screen.name);
+// }
+
+// static lv_obj_t* simple_menu_system_create_sub_menu(lv_obj_t *parent)
+// {
+//     if (parent == NULL) {
+//         printf("Error: Cannot create sub menu - parent is NULL\n");
+//         return NULL;
+//     }
+
+//     lv_obj_t *sub_menu = lv_obj_create(parent);
+//     if (sub_menu == NULL) {
+//         printf("Error: Failed to create sub menu object\n");
+//         return NULL;
+//     }
+
+//     lv_obj_set_size(sub_menu, AI_PET_SCREEN_WIDTH, AI_PET_SCREEN_HEIGHT);
+//     lv_obj_align(sub_menu, LV_ALIGN_TOP_LEFT, 0, 0);
+//     lv_obj_set_style_bg_color(sub_menu, lv_color_white(), 0);
+//     lv_obj_set_style_bg_opa(sub_menu, LV_OPA_COVER, 0);
+//     lv_obj_set_style_border_width(sub_menu, 0, 0);
+//     lv_obj_set_style_pad_all(sub_menu, 1, 0);
+
+//     // Initially hide sub menu
+//     lv_obj_add_flag(sub_menu, LV_OBJ_FLAG_HIDDEN);
+
+//     return sub_menu;
+// }
+
+static void simple_toast_create(lv_obj_t *parent)
+{
+    // Toast will be created on demand
+}
+
 static void simple_pet_area_start_animation(void)
 {
-#if !defined(ENABLE_LVGL_HARDWARE)
-    // Initialize random seed for movement (only needed for standard rand())
+    // Initialize random seed for movement
     srand(time(NULL));
-#endif
 
     pet_animation_timer = lv_timer_create(pet_animation_cb, PET_ANIMATION_INTERVAL, NULL);
     pet_movement_timer = lv_timer_create(pet_movement_cb, PET_MOVEMENT_INTERVAL, NULL);
-
-    // Create UI update timer for status bar and animation updates
-    ui_update_timer = lv_timer_create(ui_update_timer_cb, UI_UPDATE_INTERVAL, NULL);
 }
 
 static void simple_pet_area_stop_animation(void)
@@ -1076,227 +907,141 @@ static void simple_pet_area_stop_animation(void)
         lv_timer_del(pet_movement_timer);
         pet_movement_timer = NULL;
     }
-
-    if (ui_update_timer) {
-        lv_timer_del(ui_update_timer);
-        ui_update_timer = NULL;
-    }
 }
 
-/***********************************************************
-***********State Setting Interface Functions***************
-***********************************************************/
-
-/**
- * @brief Set pet animation state (only updates state variable, actual GIF switching is handled by timer)
- * @param state Target animation state
- */
-void main_screen_set_pet_animation_state(ai_pet_state_t state)
-{
-    // Skip if already in the target state
-    if (current_animation_state == state) {
-        return;
-    }
-
-    printf("[%s] Pet animation state changing: %d -> %d\n", main_screen.name, current_animation_state, state);
-    
-    // Simply update the state variable - timer will handle GIF switching
-    current_animation_state = state;
-}
-
-/**
- * @brief Set WiFi signal strength state (state will be updated in next timer cycle)
- * @param strength WiFi signal strength (0-5)
- */
-void main_screen_set_wifi_state(uint8_t strength)
+void simple_demo_set_wifi_strength(uint8_t strength)
 {
     current_wifi_strength = strength;
-    printf("[%s] WiFi strength set to: %d\n", main_screen.name, strength);
+    if (wifi_icon) {
+        const lv_img_dsc_t* icon = get_wifi_icon_by_strength(strength);
+        if (icon) {
+            lv_img_set_src(wifi_icon, icon);
+        }
+    }
 }
 
-/**
- * @brief Set battery state (state will be updated in next timer cycle)
- * @param level Battery level (0-6)
- * @param charging Battery charging status
- */
-void main_screen_set_battery_state(uint8_t level, bool charging)
+void simple_demo_set_cellular_status(uint8_t strength, bool connected)
+{
+    current_cellular_strength = strength;
+    current_cellular_connected = connected;
+    if (cellular_icon) {
+        const lv_img_dsc_t* icon = get_cellular_icon_by_strength(strength, connected);
+        if (icon) {
+            lv_img_set_src(cellular_icon, icon);
+        }
+    }
+}
+
+void simple_demo_set_battery_status(uint8_t level, bool charging)
 {
     current_battery_level = level;
     current_battery_charging = charging;
-    printf("[%s] Battery state set to: level=%d, charging=%d\n",
-           main_screen.name, level, charging);
-}
-
-/***********************************************************
-******************Status Bar Icon Helpers******************
-***********************************************************/
-static inline const lv_img_dsc_t* get_wifi_icon_by_strength(uint8_t strength)
-{
-    switch (strength) {
-        case 1: return &wifi_1_bar_icon;
-        case 2: return &wifi_2_bar_icon;
-        case 3: return &wifi_3_bar_icon;
-        case 4: return &wifi_find_icon;
-        case 5: return &wifi_add_icon;
-        default: return &wifi_off_icon;
+    if (battery_icon) {
+        const lv_img_dsc_t* icon = get_battery_icon_by_level(level, charging);
+        if (icon) {
+            lv_img_set_src(battery_icon, icon);
+        }
     }
 }
 
-static inline const lv_img_dsc_t* get_cellular_icon_by_strength(uint8_t strength, bool connected)
+// Status bar icon helper functions
+static const lv_img_dsc_t* get_wifi_icon_by_strength(uint8_t strength)
 {
-    if (strength == 0) return &cellular_off_icon;
-    if (strength == 4 || !connected) return &cellular_connected_no_internet_icon;
-
     switch (strength) {
-        case 1: return &cellular_1_bar_icon;
-        case 2: return &cellular_2_bar_icon;
-        case 3: return &cellular_3_bar_icon;
-        default: return &cellular_off_icon;
+        case 0:
+            return &wifi_off_icon;
+        case 1:
+            return &wifi_1_bar_icon;
+        case 2:
+            return &wifi_2_bar_icon;
+        case 3:
+            return &wifi_3_bar_icon;
+        case 4:
+            return &wifi_find_icon;
+        case 5:
+            return &wifi_add_icon;
+        default:
+            return &wifi_off_icon;
     }
 }
 
-static inline const lv_img_dsc_t* get_battery_icon_by_level(uint8_t level, bool charging)
+static const lv_img_dsc_t* get_cellular_icon_by_strength(uint8_t strength, bool connected)
 {
-    if (charging) return &battery_charging_icon;
+    if (strength == 0) {
+        return &cellular_off_icon;
+    }
+
+    if (strength == 4 || !connected) {
+        return &cellular_connected_no_internet_icon;
+    }
+
+    switch (strength) {
+        case 1:
+            return &cellular_1_bar_icon;
+        case 2:
+            return &cellular_2_bar_icon;
+        case 3:
+            return &cellular_3_bar_icon;
+        default:
+            return &cellular_off_icon;
+    }
+}
+
+static const lv_img_dsc_t* get_battery_icon_by_level(uint8_t level, bool charging)
+{
+    if (charging) {
+        return &battery_charging_icon;
+    }
 
     switch (level) {
-        case 0: return &battery_0_icon;
-        case 1: return &battery_1_icon;
-        case 2: return &battery_2_icon;
-        case 3: return &battery_3_icon;
-        case 4: return &battery_4_icon;
-        case 5: return &battery_5_icon;
-        case 6: return &battery_full_icon;
-        default: return &battery_full_icon;
+        case 0:
+            return &battery_0_icon;
+        case 1:
+            return &battery_1_icon;
+        case 2:
+            return &battery_2_icon;
+        case 3:
+            return &battery_3_icon;
+        case 4:
+            return &battery_4_icon;
+        case 5:
+            return &battery_5_icon;
+        case 6:
+            return &battery_full_icon;
+        default:
+            return &battery_full_icon;
     }
 }
 
-/***********************************************************
-*****************UI Update Timer Callback******************
-***********************************************************/
-
-/**
- * @brief UI update timer callback - updates all UI elements based on current state
- */
-static void ui_update_timer_cb(lv_timer_t *timer)
+static void update_status_bar_icons(void)
 {
-    if (standby_time++) {
-        if (standby_time > STANDBY_TIME * 1000 / UI_UPDATE_INTERVAL) {
-            // Enter standby mode
-            printf("[%s] Entering standby mode due to inactivity\n", main_screen.name);
-            screen_load(&standby_screen);
-            standby_time = 0;
-        }
-    }
-
-    // Update WiFi icon if changed
     if (wifi_icon) {
-        lv_img_set_src(wifi_icon, get_wifi_icon_by_strength(current_wifi_strength));
+        const lv_img_dsc_t* wifi_img = get_wifi_icon_by_strength(current_wifi_strength);
+        if (wifi_img) lv_img_set_src(wifi_icon, wifi_img);
     }
 
-    // Update cellular icon if changed
     if (cellular_icon) {
-        lv_img_set_src(cellular_icon, get_cellular_icon_by_strength(current_cellular_strength, current_cellular_connected));
+        const lv_img_dsc_t* cellular_img = get_cellular_icon_by_strength(current_cellular_strength, current_cellular_connected);
+        if (cellular_img) lv_img_set_src(cellular_icon, cellular_img);
     }
 
-#if defined(ENABLE_LVGL_HARDWARE)
-    // Read from hardware
-    uint16_t voltage_mv = axp2101_getBattVoltage();
-    uint8_t battery_percent = axp2101_getBatteryPercent();
-    current_battery_charging = axp2101_isCharging();
-
-    // Update state
-    current_battery_level = (uint8_t)(battery_percent / 100.0f * 7);
-    if (current_battery_level > 6) current_battery_level = 6;
-
-    // Update label
-    if (battery_label) {
-        lv_label_set_text_fmt(battery_label, "%dmV  %d%%", voltage_mv, battery_percent);
-    }
-#else
-    // PC simulator mode - update label based on current state
-    if (battery_label) {
-        int demo_percent = current_battery_level * 100 / 7;
-        float demo_voltage = 3.0f + (current_battery_level * 1.2f / 6);
-        if (current_battery_charging) {
-            lv_label_set_text_fmt(battery_label, "%.1fV %d%% CHG", demo_voltage, demo_percent);
-        } else {
-            lv_label_set_text_fmt(battery_label, "%.1fV %d%%", demo_voltage, demo_percent);
-        }
-    }
-#endif
     if (battery_icon) {
-        lv_img_set_src(battery_icon, get_battery_icon_by_level(current_battery_level, current_battery_charging));
+        const lv_img_dsc_t* battery_img = get_battery_icon_by_level(current_battery_level, current_battery_charging);
+        if (battery_img) lv_img_set_src(battery_icon, battery_img);
     }
 }
 
 // Pet animation functions
 static void pet_animation_cb(lv_timer_t *timer)
 {
-    // This timer is responsible for switching GIF display based on current_animation_state
-    // Check if main screen is initialized and GIF objects are valid
-    if (ui_main_screen == NULL || gif_container == NULL || 
-        pet_image_walk == NULL || pet_image_stand == NULL) {
+    // Only run normal animations if we're in normal state
+    if (current_animation_state != AI_PET_STATE_NORMAL) {
         return;
     }
 
-    // Determine which GIF should be displayed based on current state
-    lv_obj_t* target_image = NULL;
-
-    if (current_animation_state == AI_PET_STATE_NORMAL) {
-        // Normal state - choose based on walking state and direction
-        const lv_img_dsc_t* gif_src = get_gif_src_by_state(AI_PET_STATE_NORMAL, pet_is_walking, pet_direction, idle_animation_state);
-        target_image = get_gif_object_by_src(gif_src);
-    } else {
-        // Special state - get the corresponding special animation
-        const lv_img_dsc_t* gif_src = get_gif_src_by_state(current_animation_state, false, 1, 0);
-        target_image = get_gif_object_by_src(gif_src);
-    }
-
-    // If target image is different from currently visible image, switch
-    if (target_image != NULL) {
-        bool need_switch = false;
-
-        if (current_animation_state == AI_PET_STATE_NORMAL) {
-            // Check if we need to switch normal animations
-            if (current_normal_image != target_image) {
-                need_switch = true;
-            }
-        } else {
-            // Check if we need to switch to/from special animations
-            if (current_special_image != target_image) {
-                need_switch = true;
-            }
-        }
-
-        if (need_switch) {
-            // Hide all GIF objects
-            if (pet_image_walk) lv_obj_add_flag(pet_image_walk, LV_OBJ_FLAG_HIDDEN);
-            if (pet_image_walk_left) lv_obj_add_flag(pet_image_walk_left, LV_OBJ_FLAG_HIDDEN);
-            if (pet_image_blink) lv_obj_add_flag(pet_image_blink, LV_OBJ_FLAG_HIDDEN);
-            if (pet_image_stand) lv_obj_add_flag(pet_image_stand, LV_OBJ_FLAG_HIDDEN);
-            if (pet_image_sleep) lv_obj_add_flag(pet_image_sleep, LV_OBJ_FLAG_HIDDEN);
-            if (pet_image_dance) lv_obj_add_flag(pet_image_dance, LV_OBJ_FLAG_HIDDEN);
-            if (pet_image_eat) lv_obj_add_flag(pet_image_eat, LV_OBJ_FLAG_HIDDEN);
-            if (pet_image_bath) lv_obj_add_flag(pet_image_bath, LV_OBJ_FLAG_HIDDEN);
-            if (pet_image_toilet) lv_obj_add_flag(pet_image_toilet, LV_OBJ_FLAG_HIDDEN);
-            if (pet_image_sick) lv_obj_add_flag(pet_image_sick, LV_OBJ_FLAG_HIDDEN);
-            if (pet_image_happy) lv_obj_add_flag(pet_image_happy, LV_OBJ_FLAG_HIDDEN);
-            if (pet_image_angry) lv_obj_add_flag(pet_image_angry, LV_OBJ_FLAG_HIDDEN);
-            if (pet_image_cry) lv_obj_add_flag(pet_image_cry, LV_OBJ_FLAG_HIDDEN);
-
-            // Show the target image
-            lv_obj_clear_flag(target_image, LV_OBJ_FLAG_HIDDEN);
-
-            // Update current image pointers
-            if (current_animation_state == AI_PET_STATE_NORMAL) {
-                current_normal_image = target_image;
-                current_special_image = NULL;
-            } else {
-                current_special_image = target_image;
-                current_normal_image = NULL;
-            }
-        }
+    // Ensure current normal animation is always visible
+    if (current_normal_image) {
+        lv_obj_clear_flag(current_normal_image, LV_OBJ_FLAG_HIDDEN);
     }
 }
 
@@ -1319,19 +1064,17 @@ static void pet_movement_cb(lv_timer_t *timer)
             // Toggle between blink and stand animations
             idle_animation_state = 1 - idle_animation_state;
 
-            const lv_img_dsc_t* new_gif_src = get_gif_src_by_state(AI_PET_STATE_NORMAL, false, pet_direction, idle_animation_state);
-            lv_obj_t* target_image = get_gif_object_by_src(new_gif_src);
-            if (target_image != NULL) {
-                switch_pet_animation(target_image);
+            if (idle_animation_state == 0) {
+                switch_pet_animation(pet_image_blink);
+                current_normal_image = pet_image_blink;
+            } else {
+                switch_pet_animation(pet_image_stand);
+                current_normal_image = pet_image_stand;
             }
 
             // Reset idle animation timer and set new duration
             idle_animation_timer = 0;
-#if defined(ENABLE_LVGL_HARDWARE)
-            idle_animation_duration = PET_IDLE_ANIMATION_SWITCH_MIN + tal_system_get_random(PET_IDLE_ANIMATION_SWITCH_MAX - PET_IDLE_ANIMATION_SWITCH_MIN);
-#else
             idle_animation_duration = PET_IDLE_ANIMATION_SWITCH_MIN + (rand() % (PET_IDLE_ANIMATION_SWITCH_MAX - PET_IDLE_ANIMATION_SWITCH_MIN));
-#endif
         }
     }
 
@@ -1342,41 +1085,32 @@ static void pet_movement_cb(lv_timer_t *timer)
 
         if (pet_is_walking) {
             // Start walking - choose random direction and duration
-#if defined(ENABLE_LVGL_HARDWARE)
-            pet_direction = tal_system_get_random(2) ? 1 : -1;
-            pet_state_duration = PET_WALK_DURATION_MIN + tal_system_get_random(PET_WALK_DURATION_MAX - PET_WALK_DURATION_MIN);
-#else
             pet_direction = (rand() % 2) ? 1 : -1;
             pet_state_duration = PET_WALK_DURATION_MIN + (rand() % (PET_WALK_DURATION_MAX - PET_WALK_DURATION_MIN));
-#endif
 
             // Set appropriate animation based on direction
-            const lv_img_dsc_t* new_gif_src = get_gif_src_by_state(AI_PET_STATE_NORMAL, true, pet_direction, idle_animation_state);
-            lv_obj_t* target_image = get_gif_object_by_src(new_gif_src);
-            if (target_image != NULL) {
-                switch_pet_animation(target_image);
+            if (pet_direction == 1) {
+                switch_pet_animation(pet_image_walk);
+                current_normal_image = pet_image_walk;
+            } else {
+                switch_pet_animation(pet_image_walk_left);
+                current_normal_image = pet_image_walk_left;
             }
         } else {
             // Start idle - choose random duration and return to current idle animation
-#if defined(ENABLE_LVGL_HARDWARE)
-            pet_state_duration = PET_IDLE_DURATION_MIN + tal_system_get_random(PET_IDLE_DURATION_MAX - PET_IDLE_DURATION_MIN);
-#else
             pet_state_duration = PET_IDLE_DURATION_MIN + (rand() % (PET_IDLE_DURATION_MAX - PET_IDLE_DURATION_MIN));
-#endif
 
             // Reset idle animation timers when starting new idle period
             idle_animation_timer = 0;
-#if defined(ENABLE_LVGL_HARDWARE)
-            idle_animation_duration = PET_IDLE_ANIMATION_SWITCH_MIN + tal_system_get_random(PET_IDLE_ANIMATION_SWITCH_MAX - PET_IDLE_ANIMATION_SWITCH_MIN);
-#else
             idle_animation_duration = PET_IDLE_ANIMATION_SWITCH_MIN + (rand() % (PET_IDLE_ANIMATION_SWITCH_MAX - PET_IDLE_ANIMATION_SWITCH_MIN));
-#endif
 
             // Start with current idle animation state
-            const lv_img_dsc_t* new_gif_src = get_gif_src_by_state(AI_PET_STATE_NORMAL, false, pet_direction, idle_animation_state);
-            lv_obj_t* target_image = get_gif_object_by_src(new_gif_src);
-            if (target_image != NULL) {
-                switch_pet_animation(target_image);
+            if (idle_animation_state == 0) {
+                switch_pet_animation(pet_image_blink);
+                current_normal_image = pet_image_blink;
+            } else {
+                switch_pet_animation(pet_image_stand);
+                current_normal_image = pet_image_stand;
             }
         }
 
@@ -1391,34 +1125,188 @@ static void pet_movement_cb(lv_timer_t *timer)
         if (pet_x_pos > PET_MOVEMENT_LIMIT) {
             pet_x_pos = PET_MOVEMENT_LIMIT;
             pet_direction = -1;
-            const lv_img_dsc_t* new_gif_src = get_gif_src_by_state(AI_PET_STATE_NORMAL, true, pet_direction, idle_animation_state);
-            lv_obj_t* target_image = get_gif_object_by_src(new_gif_src);
-            if (target_image != NULL) {
-                switch_pet_animation(target_image);
-            }
+            switch_pet_animation(pet_image_walk_left);
+            current_normal_image = pet_image_walk_left;
         } else if (pet_x_pos < -PET_MOVEMENT_LIMIT) {
             pet_x_pos = -PET_MOVEMENT_LIMIT;
             pet_direction = 1;
-            const lv_img_dsc_t* new_gif_src = get_gif_src_by_state(AI_PET_STATE_NORMAL, true, pet_direction, idle_animation_state);
-            lv_obj_t* target_image = get_gif_object_by_src(new_gif_src);
-            if (target_image != NULL) {
-                switch_pet_animation(target_image);
-            }
+            switch_pet_animation(pet_image_walk);
+            current_normal_image = pet_image_walk;
         }
     }
 
-    // Update pet position - move the container
-    // Optimization: Only update position if it actually changed
-    if (pet_x_pos != last_pet_x_pos && gif_container) {
+    // Update pet position - move the container that holds the GIF widgets
+    lv_obj_t *gif_container = NULL;
+    if (current_animation_state == AI_PET_STATE_NORMAL && current_normal_image) {
+        gif_container = lv_obj_get_parent(current_normal_image);
+    } else if (current_special_image != NULL) {
+        gif_container = lv_obj_get_parent(current_special_image);
+    }
+
+    if (gif_container) {
         lv_obj_set_x(gif_container, pet_x_pos);
-        last_pet_x_pos = pet_x_pos;
     }
 }
 
+static void switch_pet_animation(lv_obj_t *new_animation)
+{
+    // Safety check
+    if (new_animation == NULL) {
+        return;
+    }
 
+    // Hide all normal animations first
+    if (pet_image_walk) lv_obj_add_flag(pet_image_walk, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_walk_left) lv_obj_add_flag(pet_image_walk_left, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_blink) lv_obj_add_flag(pet_image_blink, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_stand) lv_obj_add_flag(pet_image_stand, LV_OBJ_FLAG_HIDDEN);
+
+    // Show new animation
+    lv_obj_clear_flag(new_animation, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void switch_to_special_animation(ai_pet_state_t state)
+{
+    // Get the appropriate special animation widget for this state
+    lv_obj_t *target_special_image = NULL;
+    switch (state) {
+        case AI_PET_STATE_SLEEP:
+            target_special_image = pet_image_sleep;
+            break;
+        case AI_PET_STATE_DANCE:
+            target_special_image = pet_image_dance;
+            break;
+        case AI_PET_STATE_EAT:
+            target_special_image = pet_image_eat;
+            break;
+        case AI_PET_STATE_BATH:
+            target_special_image = pet_image_bath;
+            break;
+        case AI_PET_STATE_TOILET:
+            target_special_image = pet_image_toilet;
+            break;
+        case AI_PET_STATE_SICK:
+            target_special_image = pet_image_sick;
+            break;
+        case AI_PET_STATE_HAPPY:
+            target_special_image = pet_image_happy;
+            break;
+        case AI_PET_STATE_ANGRY:
+            target_special_image = pet_image_angry;
+            break;
+        case AI_PET_STATE_CRY:
+            target_special_image = pet_image_cry;
+            break;
+        default:
+            return; // Invalid state, stay in current animation
+    }
+
+    if (target_special_image == NULL) {
+        return; // Fail silently if object is invalid
+    }
+
+    // Hide all normal animations
+    if (pet_image_walk) lv_obj_add_flag(pet_image_walk, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_walk_left) lv_obj_add_flag(pet_image_walk_left, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_blink) lv_obj_add_flag(pet_image_blink, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_stand) lv_obj_add_flag(pet_image_stand, LV_OBJ_FLAG_HIDDEN);
+
+    // Hide all special animations
+    if (pet_image_sleep) lv_obj_add_flag(pet_image_sleep, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_dance) lv_obj_add_flag(pet_image_dance, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_eat) lv_obj_add_flag(pet_image_eat, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_bath) lv_obj_add_flag(pet_image_bath, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_toilet) lv_obj_add_flag(pet_image_toilet, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_sick) lv_obj_add_flag(pet_image_sick, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_happy) lv_obj_add_flag(pet_image_happy, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_angry) lv_obj_add_flag(pet_image_angry, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_cry) lv_obj_add_flag(pet_image_cry, LV_OBJ_FLAG_HIDDEN);
+
+    // Show the target special animation
+    lv_obj_clear_flag(target_special_image, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(target_special_image);
+
+    // Update state
+    current_animation_state = state;
+    current_special_image = target_special_image;
+}
+
+static void switch_to_normal_animation(void)
+{
+    // Hide all special animations
+    if (pet_image_sleep) lv_obj_add_flag(pet_image_sleep, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_dance) lv_obj_add_flag(pet_image_dance, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_eat) lv_obj_add_flag(pet_image_eat, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_bath) lv_obj_add_flag(pet_image_bath, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_toilet) lv_obj_add_flag(pet_image_toilet, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_sick) lv_obj_add_flag(pet_image_sick, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_happy) lv_obj_add_flag(pet_image_happy, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_angry) lv_obj_add_flag(pet_image_angry, LV_OBJ_FLAG_HIDDEN);
+    if (pet_image_cry) lv_obj_add_flag(pet_image_cry, LV_OBJ_FLAG_HIDDEN);
+
+    // Show the appropriate normal animation based on current state
+    if (current_normal_image) {
+        lv_obj_clear_flag(current_normal_image, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    // Update state
+    current_animation_state = AI_PET_STATE_NORMAL;
+    current_special_image = NULL;
+}
+
+void simple_pet_area_set_animation(ai_pet_state_t state)
+{
+    // Check if we're already in the target state
+    if (current_animation_state == state) {
+        return;
+    }
+
+    // Switch animations
+    if (state == AI_PET_STATE_NORMAL) {
+        switch_to_normal_animation();
+    } else {
+        switch_to_special_animation(state);
+    }
+}
+
+// static void start_pet_timers(void)
+// {
+//     // Stop existing timers if they exist
+//     if (pet_animation_timer) {
+//         lv_timer_del(pet_animation_timer);
+//         pet_animation_timer = NULL;
+//     }
+//     if (pet_movement_timer) {
+//         lv_timer_del(pet_movement_timer);
+//         pet_movement_timer = NULL;
+//     }
+
+//     // Create new timers
+//     pet_animation_timer = lv_timer_create(pet_animation_cb, PET_ANIMATION_INTERVAL, NULL);
+//     if (pet_animation_timer) {
+//         lv_timer_set_repeat_count(pet_animation_timer, -1);
+//     }
+
+//     pet_movement_timer = lv_timer_create(pet_movement_cb, PET_MOVEMENT_INTERVAL, NULL);
+//     if (pet_movement_timer) {
+//         lv_timer_set_repeat_count(pet_movement_timer, -1);
+//     }
+// }
+
+// static void stop_pet_timers(void)
+// {
+//     if (pet_animation_timer) {
+//         lv_timer_del(pet_animation_timer);
+//         pet_animation_timer = NULL;
+//     }
+//     if (pet_movement_timer) {
+//         lv_timer_del(pet_movement_timer);
+//         pet_movement_timer = NULL;
+//     }
+// }
 
 /***********************************************************
-*****************Menu System Functions*********************
+****************Internal Menu System Functions*************
 ***********************************************************/
 
 /**
@@ -1476,9 +1364,19 @@ static lv_obj_t* create_bottom_menu(lv_obj_t *parent)
     }
 
     // Initialize first button as selected like menu_system.c
-    update_menu_button_selection(0, current_selected_button);
+    current_selected_button = 0;
+    update_menu_button_selection(0, 0);
 
     return bottom_container;
+}
+
+/**
+ * @brief Create the sub menu container (placeholder)
+ */
+static lv_obj_t* create_sub_menu(lv_obj_t *parent)
+{
+    // For now, just return NULL as we're using screen manager stack
+    return NULL;
 }
 
 /**
@@ -1626,49 +1524,49 @@ void main_screen_handle_pet_event(pet_event_type_t event_type)
         case PET_EVENT_FEED_ICE_CREAM:
         case PET_EVENT_FEED_COOKIE:
             // Show eating animation
-            main_screen_set_pet_animation_state(AI_PET_STATE_EAT);
+            simple_pet_area_set_animation(AI_PET_STATE_EAT);
             printf("[%s] Pet is eating\n", main_screen.name);
             break;
 
         case PET_EVENT_DRINK_WATER:
             // Show eating animation for drinking
-            main_screen_set_pet_animation_state(AI_PET_STATE_EAT);
+            simple_pet_area_set_animation(AI_PET_STATE_EAT);
             printf("[%s] Pet is drinking water\n", main_screen.name);
             break;
 
         case PET_EVENT_TOILET:
             // Show toilet animation
-            main_screen_set_pet_animation_state(AI_PET_STATE_TOILET);
+            simple_pet_area_set_animation(AI_PET_STATE_TOILET);
             printf("[%s] Pet is using toilet\n", main_screen.name);
             break;
 
         case PET_EVENT_TAKE_BATH:
             // Show bath animation
-            main_screen_set_pet_animation_state(AI_PET_STATE_BATH);
+            simple_pet_area_set_animation(AI_PET_STATE_BATH);
             printf("[%s] Pet is taking a bath\n", main_screen.name);
             break;
 
         case PET_EVENT_SEE_DOCTOR:
             // Show sick animation temporarily
-            main_screen_set_pet_animation_state(AI_PET_STATE_SICK);
+            simple_pet_area_set_animation(AI_PET_STATE_SICK);
             printf("[%s] Pet is seeing the doctor\n", main_screen.name);
             break;
 
         case PET_EVENT_SLEEP:
             // Show sleep animation
-            main_screen_set_pet_animation_state(AI_PET_STATE_SLEEP);
+            simple_pet_area_set_animation(AI_PET_STATE_SLEEP);
             printf("[%s] Pet is sleeping\n", main_screen.name);
             break;
 
         case PET_EVENT_WAKE_UP:
             // Return to normal animation
-            main_screen_set_pet_animation_state(AI_PET_STATE_NORMAL);
+            simple_pet_area_set_animation(AI_PET_STATE_NORMAL);
             printf("[%s] Pet is waking up\n", main_screen.name);
             break;
 
         case PET_STAT_RANDOMIZE:
             // Show happy animation for stat randomization
-            main_screen_set_pet_animation_state(AI_PET_STATE_HAPPY);
+            simple_pet_area_set_animation(AI_PET_STATE_HAPPY);
             printf("[%s] Pet stats randomized\n", main_screen.name);
             break;
 

@@ -39,6 +39,7 @@
 #define KEY_RIGHT 19
 #define KEY_ENTER 10
 #define KEY_ESC   27
+#define KEY_JOYCON  32
 #define KEY_AI    105
 
 #ifndef AI_PET_SCREEN_WIDTH

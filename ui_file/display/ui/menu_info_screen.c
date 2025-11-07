@@ -363,7 +363,7 @@ static void handle_action_selection(void)
             case 1: // View Statistics
                 printf("View Statistics action selected\n");
 #if defined(ENABLE_LVGL_HARDWARE)
-				uint8_t chat_text[] = "今天发生了什么有趣的事情？";
+				uint8_t chat_text[] = "What did you do yesterday";
                 ai_text_agent_upload(chat_text, sizeof(chat_text));
 #else
 				toast_screen_show("Unlock at Higher Level", 2000);
