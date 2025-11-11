@@ -29,7 +29,8 @@
 #include "menu_video_screen.h"
 #include "standby_screen.h"
 #include "ebook_screen.h"
-#include "txt_viewer_screen.h"
+#include "rfid_scan_screen.h"
+#include "ai_log_screen.h"
 #include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
@@ -307,9 +308,10 @@ static void keyboard_event_cb(lv_event_t *e)
             break;
         case KEY_JOYCON:{
 #if defined(ENABLE_LVGL_HARDWARE)
-                uint8_t chat_text[] = "Tell me today's weather and tell me a new story";
-                toast_screen_show("Tell you a new story", 1000);
-                ai_text_agent_upload(chat_text, sizeof(chat_text));
+                // uint8_t chat_text[] = "Tell me today's weather and tell me a new story";
+                // toast_screen_show("Tell you a new story", 1000);
+                // ai_text_agent_upload(chat_text, sizeof(chat_text));
+                screen_load(&ai_log_screen);
 #else
                 toast_screen_show("Unlock at Higher Level", 2000);
 #endif
@@ -417,7 +419,7 @@ static void keyboard_event_cb(lv_event_t *e)
             printf("C key pressed - Setting battery to charging\n");
             // screen_load(&standby_screen);
             // screen_load(&ebook_screen);
-            screen_load(&txt_viewer_screen);
+            screen_load(&rfid_scan_screen);
             break;
 #endif
         default:
@@ -867,7 +869,7 @@ static void switch_pet_animation(lv_obj_t* target_image)
     }
 
     // Check if GIF objects are valid before operating on them
-    if (pet_image_walk == NULL || pet_image_walk_left == NULL || 
+    if (pet_image_walk == NULL || pet_image_walk_left == NULL ||
         pet_image_blink == NULL || pet_image_stand == NULL) {
         printf("[%s] Warning: GIF objects not initialized, cannot switch animation\n", main_screen.name);
         return;
@@ -897,7 +899,7 @@ static void switch_pet_animation(lv_obj_t* target_image)
 //     }
 
 //     // Check if GIF objects are valid before operating on them
-//     if (pet_image_walk == NULL || pet_image_sleep == NULL || 
+//     if (pet_image_walk == NULL || pet_image_sleep == NULL ||
 //         pet_image_dance == NULL || pet_image_eat == NULL) {
 //         printf("[%s] Warning: GIF objects not initialized, cannot switch to special animation\n", main_screen.name);
 //         return;
@@ -1099,7 +1101,7 @@ void main_screen_set_pet_animation_state(ai_pet_state_t state)
     }
 
     printf("[%s] Pet animation state changing: %d -> %d\n", main_screen.name, current_animation_state, state);
-    
+
     // Simply update the state variable - timer will handle GIF switching
     current_animation_state = state;
 }
@@ -1180,13 +1182,11 @@ static inline const lv_img_dsc_t* get_battery_icon_by_level(uint8_t level, bool 
  */
 static void ui_update_timer_cb(lv_timer_t *timer)
 {
-    if (standby_time++) {
-        if (standby_time > STANDBY_TIME * 1000 / UI_UPDATE_INTERVAL) {
-            // Enter standby mode
-            printf("[%s] Entering standby mode due to inactivity\n", main_screen.name);
-            screen_load(&standby_screen);
-            standby_time = 0;
-        }
+    if (standby_time++ > STANDBY_TIME * 1000 / UI_UPDATE_INTERVAL) {
+        // Enter standby mode
+        printf("[%s] Entering standby mode due to inactivity\n", main_screen.name);
+        screen_load(&standby_screen);
+        standby_time = 0;
     }
 
     // Update WiFi icon if changed
@@ -1235,7 +1235,7 @@ static void pet_animation_cb(lv_timer_t *timer)
 {
     // This timer is responsible for switching GIF display based on current_animation_state
     // Check if main screen is initialized and GIF objects are valid
-    if (ui_main_screen == NULL || gif_container == NULL || 
+    if (ui_main_screen == NULL || gif_container == NULL ||
         pet_image_walk == NULL || pet_image_stand == NULL) {
         return;
     }
@@ -1584,7 +1584,8 @@ void main_screen_init_pet_stats(pet_stats_t *stats)
     stats->happy = 90;
     stats->age_days = 15;
     stats->weight_kg = 1.2f;
-    strcpy(stats->name, "Ducky");
+    strncpy(stats->name, "Ducky", sizeof(stats->name) - 1);
+    stats->name[sizeof(stats->name) - 1] = '\0';
 
     // Also initialize internal pet stats
     main_screen_pet_stats = *stats;

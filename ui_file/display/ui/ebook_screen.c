@@ -38,7 +38,7 @@
 ************************macro define************************
 ***********************************************************/
 
-#define EBOOK_MAX_CONTENT_SIZE  (128 * 1024)  /**< Maximum content size (128KB) */
+#define EBOOK_MAX_CONTENT_SIZE  (512 * 1024)  /**< Maximum content size (512KB) */
 #define EBOOK_LINES_PER_SCREEN  12           /**< Number of visible lines per screen for better readability */
 #define EBOOK_CHARS_PER_LINE    80           /**< Maximum characters per line for better screen utilization */
 #define BOOK_SCAN_INTERVAL      3000        /**< Book scanning interval in milliseconds (3 seconds) */
@@ -551,7 +551,10 @@ static void load_book_position(int book_index)
 #else
     FILE *file = fopen(pos_filename, "r");
     if (file) {
-        fscanf(file, "%d", &book->saved_line);
+        char buffer[32];
+        if (fgets(buffer, sizeof(buffer), file)) {
+            sscanf(buffer, "%d", &book->saved_line);
+        }
         fclose(file);
         printf("Loaded position for %s: line %d\n", book->display_name, book->saved_line);
     }
@@ -1510,7 +1513,7 @@ void ebook_cleanup(void)
 
     // Free allocated content
     if (ebook_state.reading.content) {
-#if ENABLE_LVGL_HARDWARE
+#ifdef ENABLE_LVGL_HARDWARE
         tal_psram_free(ebook_state.reading.content);
 #else
         free(ebook_state.reading.content);
